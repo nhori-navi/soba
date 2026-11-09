@@ -26,9 +26,9 @@ button{font:inherit;cursor:pointer}
 <body>
 <div id="map"><div id="cap"></div></div>
 <div id="panel">
-  <p class="t">産地（試作 版2。お店は見本です）</p>
+  <p class="t">産地（試作 版3。お店は見本です）</p>
   <div class="chips" id="org"></div>
-  <p class="t">飛んでいる間の見え方</p>
+  <p class="t">飛ぶ高さ</p>
   <div class="chips" id="look"></div>
   <p id="err" hidden></p>
   <button id="go" type="button" disabled>地図を読み込んでいます</button>
@@ -45,7 +45,7 @@ const ORIGINS=[
 ];
 const SHOP={name:'見本の店',p:[139.77,35.695]};
 const HOME=[138.3,37.2];
-const CAM={start:4.7,farm:13.2,shop:15.8,slope:.25,pitchEnd:58,pitchCruise:74,approach:2800,hold:250,swing:.45,exag:1.6};
+const CAM={start:4.7,farm:13.2,shop:15.8,slope:.25,pitchEnd:58,pitchCruise:74,pitchLow:82,exagLow:2.4,approach:2800,hold:250,swing:.45,exag:1.6};
 const COL={land:'#F3F2EA',land2:'#EDECE2',sea:'#2B4A63',road:'#F4F2EA',ink:'#17212E',shu:'#D2502F',paper:'#FBFCFA'};
 
 /* ---------- 計算（地図に触らない部分） ---------- */
@@ -73,14 +73,14 @@ function makeRoute(a,b){
   return {pts,S,pos,heading};
 }
 /* 画面に見える幅を、出発点・到着点からの距離に比例させる（豆ミルと同じ考え方）。山の間だけ低く保つ */
-function makePlan(S){
-  const zc=clamp(11.6-Math.log2(S/100),7.4,11.2),W=z=>K/2**z,wc=W(zc),w0=W(CAM.farm),ws=W(CAM.shop);
+function makePlan(S,low){
+  const zc=clamp(11.6-Math.log2(S/100),7.4,11.2)+(low?1.2:0),W=z=>K/2**z,wc=W(zc),w0=W(CAM.farm),ws=W(CAM.shop);
   const width=x=>Math.min(wc,w0+CAM.slope*x,ws+CAM.slope*(S-x));
   const N=1400,dist=[],time=[0];
   for(let i=0;i<=N;i++){const v=i/N;dist.push(S*(v<.5?.5*(2*v)**5:1-.5*(2*(1-v))**5));}
   for(let i=1;i<=N;i++)time.push(time[i-1]+(dist[i]-dist[i-1])*(1/width(dist[i])+1/width(dist[i-1]))/2);
   const T=time[N];
-  return {S,zc,duration:clamp(7000+S*9,8000,15000),at(u){
+  return {S,zc,duration:clamp(7000+S*9,8000,15000)*(low?1.35:1),at(u){
     const target=u*T;let lo=0,hi=N;
     while(hi-lo>1){const m=(lo+hi)>>1;time[m]<=target?lo=m:hi=m;}
     const x=dist[lo]+(dist[hi]-dist[lo])*((target-time[lo])/Math.max(1e-9,time[hi]-time[lo]));
@@ -96,7 +96,7 @@ const flightTime=t=>{const s=bothEnds(t,.04);return clamp(s+CAM.swing*Math.sin(2
 /* ---------- 地図 ---------- */
 const $=id=>document.getElementById(id);
 const calm=matchMedia('(prefers-reduced-motion:reduce)').matches;
-const state={org:'hitachi',look:'sumi'};
+const state={org:'togakushi',look:'photo',fly:'low'};
 let map,marker,run=0,ready=false;
 const fc=f=>({type:'FeatureCollection',features:f});
 function chips(el,items,get,set){
@@ -105,11 +105,11 @@ function chips(el,items,get,set){
 }
 function caption(){
   const o=ORIGINS.find(x=>x.id===state.org);
-  $('cap').innerHTML=`${o.name} → ${SHOP.name}<small>${o.sub}、およそ${Math.round(gcKm(o.p,SHOP.p))}km、${state.look==='photo'?'衛星写真':'墨絵'}で表示中</small>`;
+  $('cap').innerHTML=`${o.name} → ${SHOP.name}<small>${o.sub}、およそ${Math.round(gcKm(o.p,SHOP.p))}km、${state.fly==='low'?'山すれすれ':'前回の高さ'}で飛びます</small>`;
 }
 function drawUI(){
   chips($('org'),ORIGINS.map(o=>[o.id,o.name.split(' ')[1]]),()=>state.org,v=>{state.org=v;});
-  chips($('look'),[['sumi','墨絵'],['photo','衛星写真']],()=>state.look,v=>{state.look=v;applyLook();});
+  chips($('look'),[['low','山すれすれ'],['high','前回の高さ']],()=>state.fly,v=>{state.fly=v;});
   caption();
 }
 function showErr(t){$('err').hidden=false;$('err').textContent=t;}
@@ -157,7 +157,7 @@ function frames(dur,fn,my){return new Promise(res=>{const t0=performance.now();(
 
 async function fly(){
   if(!ready)return;
-  const my=++run,o=ORIGINS.find(x=>x.id===state.org),r=makeRoute(o.p,SHOP.p),plan=makePlan(r.S),c=r.pts,last=c.length-1;
+  const my=++run,o=ORIGINS.find(x=>x.id===state.org),r=makeRoute(o.p,SHOP.p),low=state.fly==='low',pc=low?CAM.pitchLow:CAM.pitchCruise,plan=makePlan(r.S,low),c=r.pts,last=c.length-1;
   const startB=r.heading(0),endB=r.heading(r.S),photo=state.look==='photo';
   const cm=[0],mercY=la=>Math.log(Math.tan(Math.PI/4+la*R/2))/(2*Math.PI);
   for(let i=1;i<=last;i++)cm.push(cm[i-1]+Math.hypot((c[i][0]-c[i-1][0])/360,mercY(c[i][1])-mercY(c[i-1][1])));
@@ -167,8 +167,8 @@ async function fly(){
   marker.setLngLat(o.p).addTo(map);
   if(calm){map.getSource('hl').setData(fc([{type:'Feature',geometry:{type:'LineString',coordinates:c},properties:{}}]));trim([0,0]);marker.setLngLat(SHOP.p);map.jumpTo({center:SHOP.p,zoom:CAM.shop,pitch:0,bearing:0});$('go').disabled=false;$('go').textContent='もう一度飛ぶ';return;}
   /* 列島から産地へ。ゆっくり→だんだん速く */
-  map.jumpTo({center:HOME,zoom:CAM.start,pitch:0,bearing:0});applyLook();
-  try{map.easeTo({center:o.p,zoom:CAM.farm,pitch:CAM.pitchEnd,bearing:startB,duration:1,preloadOnly:true});map.easeTo({center:SHOP.p,zoom:CAM.shop,pitch:CAM.pitchEnd,bearing:endB,duration:1,preloadOnly:true});[.2,.35,.5,.65,.8].forEach(f=>{const x=r.S*f;map.easeTo({center:r.pos(x),zoom:plan.zc,pitch:CAM.pitchCruise,bearing:r.heading(x),duration:1,preloadOnly:true});});}catch(e){}
+  map.setTerrain({source:'dem',exaggeration:low?CAM.exagLow:CAM.exag});map.jumpTo({center:HOME,zoom:CAM.start,pitch:0,bearing:0});applyLook();
+  try{map.easeTo({center:o.p,zoom:CAM.farm,pitch:CAM.pitchEnd,bearing:startB,duration:1,preloadOnly:true});map.easeTo({center:SHOP.p,zoom:CAM.shop,pitch:CAM.pitchEnd,bearing:endB,duration:1,preloadOnly:true});[.2,.35,.5,.65,.8].forEach(f=>{const x=r.S*f;map.easeTo({center:r.pos(x),zoom:plan.zc,pitch:pc,bearing:r.heading(x),duration:1,preloadOnly:true});});}catch(e){}
   await frames(CAM.approach,p=>{
     const zoom=CAM.start+(CAM.farm-CAM.start)*easeIn(p),m=smooth(0,.62,p),k=smooth(CAM.start+3,CAM.farm-1,zoom);
     map.jumpTo({center:[HOME[0]+(o.p[0]-HOME[0])*m,HOME[1]+(o.p[1]-HOME[1])*m],zoom,pitch:CAM.pitchEnd*k,bearing:startB*smooth(.1,.98,p)});
@@ -178,9 +178,9 @@ async function fly(){
   /* 線は先に丸ごと渡し、見える長さだけを毎コマ変える */
   map.getSource('hl').setData(fc([{type:'Feature',geometry:{type:'LineString',coordinates:c},properties:{}}]));trim([.00001,1]);
   await frames(plan.duration,p=>{
-    const {x,zoom}=plan.at(flightTime(p)),pos=r.pos(x),low=1-smooth(plan.zc,plan.zc+2.2,zoom);
+    const {x,zoom}=plan.at(flightTime(p)),pos=r.pos(x),lv=1-smooth(plan.zc,low?CAM.farm:plan.zc+2.2,zoom);
     trim([trimAt(x),1]);marker.setLngLat(pos);
-    map.jumpTo({center:pos,zoom,pitch:CAM.pitchEnd+(CAM.pitchCruise-CAM.pitchEnd)*low,bearing:r.heading(x)});
+    map.jumpTo({center:pos,zoom,pitch:CAM.pitchEnd+(pc-CAM.pitchEnd)*lv,bearing:r.heading(x)});
   },my);
   if(my!==run)return;
   trim([0,0]);marker.setLngLat(SHOP.p);
