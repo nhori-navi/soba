@@ -3,62 +3,527 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>そば 山越えの試作</title>
+<title>そばミル</title>
+<meta name="theme-color" content="#1F3F6E">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Kaisei+Tokumin:wght@500;700&family=Zen+Kaku+Gothic+New:wght@400;500;700&display=swap">
 <style>
-:root{--paper:#F2F4F1;--sheet:#FBFCFA;--ink:#17212E;--muted:#55606D;--line:#C9D1D6;--ai:#1F3F6E;--on-ai:#F7F9F8}
+/* 染付のそば猪口：白磁の地に藍の線。つゆだけ返しの色。上に地図、下に記録 */
+:root{
+  --bg:#F2F4F1;--sheet:#FBFCFA;--ink:#17212E;--muted:#55606D;--line:#C9D1D6;
+  --ai:#1F3F6E;--on-ai:#F7F9F8;--kaeshi:#7A3E12;--kaeshi-tint:#F1E6D9;--speck:rgba(50,42,34,.20);--ring:#FBFCFA;
+  --head:"Kaisei Tokumin","Hiragino Mincho ProN","Yu Mincho",serif;
+  --body:"Zen Kaku Gothic New","Hiragino Sans","Yu Gothic",sans-serif;
+}
+@media (prefers-color-scheme:dark){:root{
+  --bg:#0F1620;--sheet:#172131;--ink:#E9ECE8;--muted:#A3AEBA;--line:#34445A;
+  --ai:#9DBBE3;--on-ai:#0F1620;--kaeshi:#E0A86F;--kaeshi-tint:#33261A;--speck:rgba(233,226,212,.16);--ring:#172131;
+  color-scheme:dark}}
 html,body{height:100%;margin:0}
-body{display:flex;flex-direction:column;background:var(--paper);color:var(--ink);font-family:"Hiragino Sans","Yu Gothic",sans-serif;font-size:15px}
-#map{flex:1;min-height:0;position:relative}
-#cap{position:absolute;left:12px;right:12px;top:max(12px,env(safe-area-inset-top));z-index:2;background:var(--sheet);border:1px solid var(--line);border-radius:3px;padding:7px 10px;font-size:14px;font-weight:700;line-height:1.4}
-#cap small{display:block;font-weight:400;font-size:12.5px;color:var(--muted)}
-#panel{padding:10px max(16px,env(safe-area-inset-right)) max(12px,env(safe-area-inset-bottom)) max(16px,env(safe-area-inset-left));display:grid;gap:8px}
-.t{margin:0;font-size:12.5px;font-weight:700;color:var(--muted)}
-.chips{display:flex;flex-wrap:wrap;gap:6px}
-button{font:inherit;cursor:pointer}
-.chip{min-height:40px;padding:0 10px;border:1px solid var(--line);border-radius:3px;background:var(--sheet);color:var(--ink);font-size:14px}
+body{display:flex;flex-direction:column;height:100dvh;background:var(--bg);color:var(--ink);font-family:var(--body);font-size:15px;line-height:1.6;overflow:hidden}
+[hidden]{display:none!important}
+#mapWrap{position:relative;height:40dvh;flex:none;background:var(--line)}
+body.flying #mapWrap{height:68dvh}
+body.flyingNow #mapWrap{pointer-events:none}
+body.picking #mapWrap{flex:1;height:auto}
+body.picking #pane{display:none}
+#map{position:absolute;inset:0}
+#float{position:absolute;right:10px;bottom:30px;z-index:2;min-height:40px;padding:0 12px;border:1px solid var(--line);border-radius:3px;background:var(--sheet);color:var(--ink);font:inherit;font-size:14px;cursor:pointer}
+#mapMsg{position:absolute;left:12px;right:12px;top:calc(12px + env(safe-area-inset-top));z-index:2;background:var(--sheet);border:1px solid var(--line);border-radius:3px;padding:8px 10px;font-size:13.5px}
+#cross{position:absolute;left:50%;top:50%;width:36px;height:36px;margin:-18px 0 0 -18px;z-index:2;pointer-events:none}
+#cross::before,#cross::after{content:"";position:absolute;background:#D2502F}
+#cross::before{left:17px;top:0;width:2px;height:36px}
+#cross::after{top:17px;left:0;height:2px;width:36px}
+#pickBar{padding:10px max(16px,env(safe-area-inset-right)) max(12px,env(safe-area-inset-bottom)) max(16px,env(safe-area-inset-left));display:grid;gap:8px;background:var(--sheet)}
+#pane{flex:1;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch}
+.tabs{position:sticky;top:0;z-index:3;display:grid;grid-template-columns:repeat(3,1fr);background:var(--bg);border-bottom:1.5px solid var(--ai)}
+.tabs button{min-height:44px;border:0;background:none;color:var(--muted);font:inherit;font-size:15px;cursor:pointer}
+.tabs button[aria-pressed="true"]{background:var(--ai);color:var(--on-ai);font-weight:700}
+.view{max-width:520px;margin:0 auto;padding-block:14px max(28px,env(safe-area-inset-bottom));padding-left:max(16px,env(safe-area-inset-left));padding-right:max(16px,env(safe-area-inset-right));display:grid;gap:16px}
+h2{font-family:var(--head);font-size:18px;font-weight:700;margin:0;line-height:1.3}
+p{margin:0}
+.block{display:grid;gap:8px;min-width:0}
+.t{margin:0;font-size:13px;font-weight:700;color:var(--muted);display:block}
+.note{font-size:12.5px;color:var(--muted)}
+.chips{display:flex;flex-wrap:wrap;gap:8px}
+.chip{min-height:40px;padding:0 12px;border:1px solid var(--line);border-radius:3px;background:var(--sheet);color:var(--ink);font:inherit;font-size:14px;cursor:pointer}
 .chip[aria-pressed="true"]{background:var(--ai);border-color:var(--ai);color:var(--on-ai);font-weight:700}
-#go{min-height:48px;border:0;border-radius:3px;background:var(--ai);color:var(--on-ai);font-size:16px;font-weight:700}
-#go:disabled{opacity:.5}
-#err{margin:0;font-size:13.5px;font-weight:700;color:#7A3E12}
+.go{min-height:50px;width:100%;border:0;border-radius:3px;background:var(--ai);color:var(--on-ai);font:inherit;font-size:16px;font-weight:700;cursor:pointer}
+.sub{min-height:44px;padding:0 16px;border:1.5px solid var(--ai);border-radius:3px;background:var(--sheet);color:var(--ai);font:inherit;font-size:15px;font-weight:700;cursor:pointer;justify-self:start}
+.link{justify-self:start;background:none;border:0;padding:8px 0;color:var(--muted);font:inherit;font-size:13px;text-decoration:underline;cursor:pointer}
+.row{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+a{color:var(--ai)}
+button:focus-visible,.pad:focus-visible,summary:focus-visible,input:focus-visible,textarea:focus-visible,a:focus-visible{outline:2px solid var(--ai);outline-offset:2px}
+input[type=text],input[type=date],input[type=number],textarea{width:100%;box-sizing:border-box;border:1px solid var(--line);border-radius:3px;background:var(--sheet);color:var(--ink);font:inherit;font-size:16px;padding:9px 10px}
+textarea{resize:vertical;font-size:14px;line-height:1.5}
+.msg{font-size:14px;font-weight:700;color:var(--ai)}
+.err{font-size:14px;font-weight:700;color:var(--kaeshi)}
+.over{position:fixed;inset:0;z-index:20;display:flex;flex-direction:column;background:var(--bg)}
+#layer2 .over{z-index:30}
+.over header{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:calc(10px + env(safe-area-inset-top)) max(16px,env(safe-area-inset-right)) 10px max(16px,env(safe-area-inset-left));border-bottom:1.5px solid var(--ai)}
+.over header button{min-height:40px;padding:0 10px;background:none;border:1px solid var(--line);border-radius:3px;color:var(--ink);font:inherit;cursor:pointer}
+.over .scroll{flex:1;min-height:0;overflow-y:auto}
+.over footer{padding:10px max(16px,env(safe-area-inset-right)) max(12px,env(safe-area-inset-bottom)) max(16px,env(safe-area-inset-left));display:grid;gap:6px;border-top:1px solid var(--line);background:var(--bg)}
+.pads{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.padbox{display:grid;gap:3px;min-width:0}
+.padname{font-family:var(--head);font-size:21px;font-weight:700;line-height:1.2}
+.padbox.tsuyu .padname{color:var(--kaeshi)}.padbox.soba .padname{color:var(--ai)}
+.ax{font-size:12px;color:var(--muted);line-height:1.3}
+.ax.up{text-align:center}
+.ax.low{display:flex;justify-content:space-between;gap:4px}
+.pad{display:block;aspect-ratio:1;width:100%;border:1.5px solid var(--ai);border-radius:3px;touch-action:none;cursor:pointer;user-select:none;-webkit-user-select:none;background-color:var(--sheet);background-image:radial-gradient(var(--speck) .7px,transparent 1.1px),radial-gradient(var(--speck) .9px,transparent 1.3px);background-size:23px 19px,31px 37px;background-position:3px 5px,14px 11px}
+.tsuyu .pad{border-color:var(--kaeshi);background-image:none;background-color:var(--kaeshi-tint)}
+.mid{stroke:var(--line);stroke-width:.6}
+.dot{fill:var(--ai);opacity:.32}.tsuyu .dot{fill:var(--kaeshi)}
+.ghost{fill:none;stroke:var(--ai);stroke-width:1.5;stroke-dasharray:3 2.4}.tsuyu .ghost{stroke:var(--kaeshi)}
+.mark{transition:transform .1s ease-out}
+.mark circle{fill:var(--ai);stroke:var(--ring);stroke-width:2}.tsuyu .mark circle{fill:var(--kaeshi)}
+.read{min-height:2.7em;font-size:14px;font-weight:700;line-height:1.35}
+.read.none{color:var(--muted);font-weight:400}
+.seg{display:grid;grid-template-columns:repeat(3,1fr);border:1px solid var(--line);border-radius:3px;overflow:hidden;background:var(--sheet)}
+.seg button{min-height:46px;border:0;border-left:1px solid var(--line);background:none;color:var(--ink);font:inherit;font-size:14px;cursor:pointer;padding:0 2px}
+.seg button:first-child{border-left:0}
+.seg button[aria-pressed="true"]{background:var(--ai);color:var(--on-ai);font-weight:700}
+details{min-width:0}
+summary{cursor:pointer;font-size:14px;color:var(--ai);min-height:36px;display:flex;align-items:center;gap:6px}
+.wgroups{display:grid;gap:10px}
+.wgroups .t{margin-bottom:6px}
+.minis{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.mini{display:grid;gap:3px;min-width:0}
+.mini svg{display:block;width:100%;aspect-ratio:1;border:1px solid var(--line);border-radius:3px;background:var(--sheet)}
+.m-on{fill:var(--ai)}.tsuyu .m-on{fill:var(--kaeshi)}
+.m-off{fill:none;stroke:var(--muted);stroke-width:1.2}
+.list{list-style:none;margin:0;padding:0;display:grid}
+.list li{border-top:1px solid var(--line)}
+.list li:first-child{border-top:0}
+.rec{width:100%;display:grid;grid-template-columns:3.2em minmax(0,1fr) auto;column-gap:8px;padding:10px 0;background:none;border:0;color:inherit;font:inherit;text-align:left;cursor:pointer;align-items:baseline}
+.d{font-variant-numeric:tabular-nums;color:var(--muted);font-size:13px}
+.s{font-weight:700;font-size:14px;overflow-wrap:anywhere}
+.r{font-size:12.5px;color:var(--muted);white-space:nowrap}.r.yes{color:var(--ai);font-weight:700}
+.b{grid-column:2/4;font-size:13px;color:var(--muted);line-height:1.45}
+.steps{margin:0;padding:0;list-style:none;counter-reset:s;display:grid;gap:14px}
+.steps>li{counter-increment:s;display:grid;gap:7px;padding-left:30px;position:relative}
+.steps>li::before{content:counter(s);position:absolute;left:0;top:1px;width:22px;height:22px;border-radius:50%;background:var(--ai);color:var(--on-ai);font-size:13px;font-weight:700;text-align:center;line-height:22px}
+.st{font-size:14px}
+.cand{display:grid;gap:8px;border:1.5px solid var(--ai);border-radius:3px;padding:12px;background:var(--sheet)}
+.cr{display:grid;grid-template-columns:24px minmax(0,1fr);gap:8px;padding:9px 0;border-top:1px solid var(--line);align-items:start;cursor:pointer}
+.cr:first-child{border-top:0}
+.cr input{width:20px;height:20px;margin:2px 0 0;accent-color:var(--ai)}
+.cn{font-size:12.5px;font-weight:700;color:var(--muted);display:block}
+.cv{font-size:14px;display:block;overflow-wrap:anywhere}
+.cs{font-size:12.5px;color:var(--muted);display:block;overflow-wrap:anywhere}
+.warn{font-size:12.5px;font-weight:700;color:var(--kaeshi);display:block}
+.card{border-top:1px solid var(--line);padding:4px 0}
+.card:first-child{border-top:0}
+.card summary{font-size:15px;font-weight:700;color:var(--ink);min-height:44px;flex-wrap:wrap}
+.card summary small{font-weight:400;color:var(--muted);font-size:13px}
+.card summary::after{content:"開く";margin-left:auto;font-size:12.5px;font-weight:400;color:var(--ai)}
+.card[open] summary::after{content:"閉じる"}
+.cb{display:grid;gap:12px;padding:2px 0 12px}
+.cb dl{margin:0;display:grid;gap:8px}
+.cb dt{font-size:12.5px;font-weight:700;color:var(--muted)}
+.cb dd{margin:0;font-size:14px;overflow-wrap:anywhere}
+.dl{margin:0;display:grid;grid-template-columns:auto minmax(0,1fr);gap:4px 12px}
+.dl dt{font-size:13px;color:var(--muted)}
+.dl dd{margin:0;font-size:14px;overflow-wrap:anywhere}
 .seed{filter:drop-shadow(0 1px 2px rgba(0,0,0,.5))}
+@media (prefers-reduced-motion:reduce){.mark{transition:none}}
 </style>
 </head>
 <body>
-<div id="map"><div id="cap"></div></div>
-<div id="panel">
-  <p class="t">産地（試作 版5。お店は見本です）</p>
-  <div class="chips" id="org"></div>
-  <p id="err" hidden></p>
-  <button id="go" type="button" disabled>地図を読み込んでいます</button>
-</div>
+<div id="mapWrap"><div id="map"></div><div id="cross" hidden></div><button id="float" type="button" hidden>全体に戻す</button><div id="mapMsg" hidden></div></div>
+<div id="pickBar" hidden></div>
+<main id="pane">
+  <nav class="tabs" id="tabs" aria-label="画面の切り替え"></nav>
+  <div class="view" id="view"></div>
+</main>
+<div id="layer1"></div>
+<div id="layer2"></div>
 
 <script>
+const VERSION='版6';
 const TOKEN='pk.eyJ1IjoiaG9yaWhha28iLCJhIjoiY211djd0ejljMDA5ZjMycHYxaTY3M3BsdSJ9.a1yefJYynC4k_YvllM5DVw';
 const MB='https://api.mapbox.com/mapbox-gl-js/v3.9.0';
-const ORIGINS=[
-  {id:'hitachi',name:'茨城県 常陸太田市',sub:'常陸秋そば',p:[140.527,36.538]},
-  {id:'togakushi',name:'長野県 戸隠',sub:'信州のそば',p:[138.08,36.75]},
-  {id:'yamato',name:'福島県 山都',sub:'会津のそば',p:[139.72,37.63]},
-  {id:'horokanai',name:'北海道 幌加内町',sub:'北の大産地',p:[142.155,44.005]}
-];
-const SHOP={name:'見本の店',p:[139.77,35.695]};
 const HOME=[138.3,37.2];
-const CAM={start:4.7,farm:13.2,shop:15.8,slope:.25,pitchEnd:58,pitchCruise:74,approach:2800,hold:250,swing:.45,exag:1.6};
-const COL={land:'#F3F2EA',land2:'#EDECE2',sea:'#2B4A63',road:'#F4F2EA',ink:'#17212E',shu:'#D2502F',paper:'#FBFCFA'};
+const CAM={farm:13.2,shop:15.8,slope:.25,pitchEnd:58,pitchCruise:74,approach:2800,hold:250,swing:.45,exag:1.6};
+const COL={land:'#F3F2EA',land2:'#EDECE2',sea:'#2B4A63',road:'#FFFFFF',ink:'#17212E',shu:'#D2502F',paper:'#FBFCFA'};
+const ORIGIN_DICT=[
+  {name:'常陸秋そば',place:'茨城県 常陸太田市',p:[140.527,36.538]},
+  {name:'信州 戸隠',place:'長野県 長野市戸隠',p:[138.08,36.75]},
+  {name:'会津 山都',place:'福島県 喜多方市山都',p:[139.72,37.63]},
+  {name:'北海道 幌加内',place:'北海道 幌加内町',p:[142.155,44.005]}
+];
+const DISHES=['もり','ざる','かけ','天ぷら','鴨','その他'];
+const AXIS={
+  soba:{name:'そば',up:'香り強い',low:['のどごし','香り穏やか','コシ'],
+    x:['のどごし重視','ややのどごし','のどごしとコシ半々','ややコシ','コシ重視'],
+    y:['香り穏やか','香りやや穏やか','香りほどよい','香りやや強い','香り強い']},
+  tsuyu:{name:'つゆ',up:'だし強い',low:['甘め','だし穏やか','辛め'],
+    x:['甘め','やや甘め','甘辛ほどよい','やや辛め','辛め'],
+    y:['だし穏やか','だしやや穏やか','だしほどよい','だしやや強い','だし強い']}
+};
+const AGAIN=['今回かぎり','機会があれば','また来たい'];
+const WORDS=[
+  {t:'そばとつゆ',w:['甘みがある','ざらつきがある','細打ち','ほしが見える','鰹が立つ','かえしがまろやか','そば湯が濃い']},
+  {t:'混み具合',w:['すぐ入れた','少し待った','かなり並んだ']},
+  {t:'店の人',w:['店主ひとり','夫婦','家族','複数の職人']},
+  {t:'客層',w:['ひとり客','常連','年配','家族連れ','観光客']}
+];
+const MINE=[
+  {k:'look',t:'雰囲気',o:['静か','にぎやか','町のそば屋','蔵・古民家','民家風','モダン'],one:false},
+  {k:'size',t:'広さ',o:['〜10席','〜20席','〜40席','それ以上'],one:true},
+  {k:'seat',t:'席',o:['カウンター','テーブル','小上がり','座敷'],one:false}
+];
+const ITEMS='営業時間、定休日、席数、席の種類、建物・店内の様子、店の人、創業、修業先・系統、自家製粉、そば粉の産地、客層、閉店の情報';
+const STALE=['営業時間','定休日'];
 
-/* ---------- 計算（地図に触らない部分） ---------- */
-const R=Math.PI/180,K=25000;
+const $=id=>document.getElementById(id);
+const esc=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,7);
+const today=()=>{const d=new Date(),p=n=>String(n).padStart(2,'0');return d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate());};
+const md=s=>{const m=/^\d{4}-(\d{2})-(\d{2})/.exec(s||'');return m?(+m[1])+'/'+(+m[2]):'';};
+const okUrl=u=>/^https?:\/\//i.test(u||'');
+const host=u=>{try{return new URL(u).hostname;}catch(e){return '';}};
+const old=d=>{const t=Date.parse(d);return !isNaN(t)&&Date.now()-t>365*864e5;};
 const clamp=(n,a,b)=>Math.max(a,Math.min(b,n));
 const smooth=(a,b,x)=>{const t=clamp((x-a)/(b-a),0,1);return t*t*(3-2*t);};
+const calm=matchMedia('(prefers-reduced-motion:reduce)').matches;
+
+/* ---------- 保存（端末の中のデータベース。同じアドレスのほかのアプリとは別の入れ物） ---------- */
+let idb=null;
+const STORES=['shops','visits'];
+const D={shops:[],visits:[]};
+function openDB(){return new Promise((ok,no)=>{const r=indexedDB.open('sobamiru',1);r.onupgradeneeded=()=>{for(const n of STORES)if(!r.result.objectStoreNames.contains(n))r.result.createObjectStore(n,{keyPath:'id'});};r.onsuccess=()=>ok(idb=r.result);r.onerror=()=>no(r.error);});}
+function tx(s,mode,fn){return new Promise((ok,no)=>{const t=idb.transaction(s,mode),st=t.objectStore(s);let out;const q=fn(st);if(q)q.onsuccess=()=>out=q.result;t.oncomplete=()=>ok(out);t.onerror=t.onabort=()=>no(t.error);});}
+const dbAll=s=>tx(s,'readonly',st=>st.getAll());
+async function dbLoad(){for(const n of STORES)D[n]=await dbAll(n);}
+async function save(store,o){
+  const i=D[store].findIndex(x=>x.id===o.id);i<0?D[store].push(o):D[store][i]=o;
+  await tx(store,'readwrite',st=>st.put(o));
+  if(navigator.storage&&navigator.storage.persist)navigator.storage.persist().catch(()=>{});
+}
+async function remove(store,id){D[store]=D[store].filter(x=>x.id!==id);await tx(store,'readwrite',st=>st.delete(id));}
+function kv(k,v){try{if(v===undefined)return localStorage.getItem('sobamiru_'+k);localStorage.setItem('sobamiru_'+k,v);}catch(e){return null;}}
+const shopOf=id=>D.shops.find(s=>s.id===id);
+const visitOf=id=>D.visits.find(v=>v.id===id);
+const byDate=(a,b)=>(b.date||'').localeCompare(a.date||'')||(b.at||0)-(a.at||0);
+const ends=v=>{const s=shopOf(v.shop);return v.origin&&v.origin.p&&s&&s.p?[v.origin.p,s.p]:null;};
+const lastAt=(shop,notId,beforeDate)=>[...D.visits].filter(v=>v.shop===shop&&v.id!==notId&&(!beforeDate||(v.date||'')<=beforeDate)).sort(byDate)[0]||null;
+
+const state={tab:'rec',shop:null,visit:null,picking:false};
+let map=null,marker=null,ready=false,run=0;
+const say=(v,k)=>v?AXIS[k].x[v[0]]+'、'+AXIS[k].y[v[1]]:'未記入';
+const px=v=>10+20*v[0],py=v=>10+20*(4-v[1]);
+
+/* ---------- 下の画面 ---------- */
+function drawTabs(){
+  $('tabs').innerHTML=[['rec','記録'],['mise','お店'],['back','控え']].map(([k,t])=>`<button type="button" data-k="${k}" aria-pressed="${state.tab===k}">${t}</button>`).join('');
+  $('tabs').querySelectorAll('button').forEach(b=>b.onclick=()=>{if(state.visit)leaveVisit();state.tab=b.dataset.k;render();$('pane').scrollTop=0;});
+}
+function render(){drawTabs();if(state.visit&&visitOf(state.visit))return drawVisit();if(state.tab==='rec')drawRec();else if(state.tab==='mise')drawMise();else drawBack();}
+function miniSvg(k,list,only){
+  const cell={};
+  list.forEach(r=>{const v=r[k];if(!v)return;const c=v.join();(cell[c]=cell[c]||{v,n:0,yes:0}).n++;if(r.again===2)cell[c].yes++;});
+  const a=AXIS[k],dots=Object.values(cell).map(o=>`<circle class="${o.yes||only?'m-on':'m-off'}" cx="${px(o.v)}" cy="${py(o.v)}" r="${only?7:3.5+o.n*2.2}"/>`).join('');
+  return `<div class="mini ${k}"><div class="ax up">${a.up}</div><svg viewBox="0 0 100 100" role="img" aria-label="${a.name}の記録の分布"><line class="mid" x1="50" y1="0" x2="50" y2="100"/><line class="mid" x1="0" y1="50" x2="100" y2="50"/>${dots}</svg><div class="ax low"><span>${a.low[0]}</span><span>${a.low[2]}</span></div></div>`;
+}
+function drawRec(){
+  const list=D.visits.filter(v=>!state.shop||v.shop===state.shop).sort(byDate);
+  const shops=[...D.shops].sort((a,b)=>a.at-b.at);
+  $('view').innerHTML=`
+    ${shops.length?`<div class="chips" id="fil"><button class="chip" type="button" data-k="" aria-pressed="${!state.shop}">すべて</button>${shops.map(s=>`<button class="chip" type="button" data-k="${esc(s.id)}" aria-pressed="${state.shop===s.id}">${esc(s.name)}</button>`).join('')}</div>`:''}
+    <button class="go" id="add" type="button">今日のそばを記録</button>
+    ${list.length?`<div class="block"><h2>自分の好きな場所</h2><div class="minis">${miniSvg('soba',list)}${miniSvg('tsuyu',list)}</div><p class="note">塗りつぶしは「また来たい」、白抜きはそれ以外です。同じ場所に重なると大きくなります。</p></div>
+    <div class="block"><h2>これまでの記録</h2><ul class="list">${list.map(v=>{const s=shopOf(v.shop);return `<li><button class="rec" type="button" data-id="${esc(v.id)}"><span class="d">${esc(md(v.date))}</span><span class="s">${esc(s?s.name:'')}${v.dish?'　'+esc(v.dish):''}</span><span class="r${v.again===2?' yes':''}">${v.again==null?'':AGAIN[v.again]}</span><span class="b">そば：${esc(say(v.soba,'soba'))}<br>つゆ：${esc(say(v.tsuyu,'tsuyu'))}${v.origin?'<br>産地：'+esc(v.origin.name):''}</span></button></li>`;}).join('')}</ul></div>`
+    :'<p class="note">まだ記録がありません。お店で食べたら、最初の一枚を記録してみましょう。</p>'}`;
+  $('add').onclick=()=>openForm({});
+  $('view').querySelectorAll('#fil button').forEach(b=>b.onclick=()=>{state.shop=b.dataset.k||null;render();focusShop();});
+  $('view').querySelectorAll('.rec').forEach(b=>b.onclick=()=>pickVisit(b.dataset.id));
+}
+function focusShop(){
+  if(!ready)return;
+  const s=state.shop&&shopOf(state.shop);
+  mapSync();
+  if(s&&s.p)map.flyTo({center:s.p,zoom:homeZoom()+6,pitch:0,bearing:0,duration:1500,essential:!calm});
+  else map.flyTo({center:HOME,zoom:homeZoom(),pitch:0,bearing:0,duration:1500,essential:!calm});
+}
+function pickVisit(id){state.visit=id;render();$('pane').scrollTop=0;const v=visitOf(id);if(v&&ends(v))fly(v);}
+function leaveVisit(){state.visit=null;goHome();}
+function drawVisit(){
+  const v=visitOf(state.visit),s=shopOf(v.shop),prev=lastAt(v.shop,v.id,v.date),e=ends(v);
+  let price=v.price?v.price.toLocaleString()+'円':'';
+  if(v.price&&prev&&prev.price&&prev.price!==v.price)price+=`（前回より${v.price>prev.price?'+':'−'}${Math.abs(v.price-prev.price).toLocaleString()}円）`;
+  const rows=[['日付',md(v.date)],['食べたもの',v.dish],['値段',price],['産地',v.origin?v.origin.name+(v.origin.place?'（'+v.origin.place+'）':''):'わからない'],['そば',say(v.soba,'soba')],['つゆ',say(v.tsuyu,'tsuyu')],['次の気持ち',v.again==null?'':AGAIN[v.again]],['言葉',(v.words||[]).join('、')]].filter(r=>r[1]);
+  $('view').innerHTML=`
+    <button class="link" id="back" type="button">一覧に戻る</button>
+    <h2>${esc(s?s.name:'')}</h2>
+    <dl class="dl">${rows.map(r=>`<dt>${r[0]}</dt><dd>${esc(r[1])}</dd>`).join('')}</dl>
+    ${v.memo?`<p>${esc(v.memo).replace(/\n/g,'<br>')}</p>`:''}
+    ${v.soba||v.tsuyu?`<div class="minis">${miniSvg('soba',[v],true)}${miniSvg('tsuyu',[v],true)}</div>`:''}
+    ${e?'<button class="sub" id="again" type="button">産地から店へ飛ぶ</button>':`<p class="note">${v.origin?'お店の場所を地図で指定すると、産地から店へ飛べます。':'産地を入れてお店の場所を指定すると、産地から店へ飛べます。'}</p>`}
+    <div class="row"><button class="sub" id="edit" type="button">直す</button><button class="link" id="del" type="button">この記録を消す</button></div>`;
+  $('back').onclick=()=>{leaveVisit();render();};
+  if(e)$('again').onclick=()=>fly(v);
+  $('edit').onclick=()=>openForm({edit:v});
+  let armed=false;
+  $('del').onclick=async()=>{if(!armed){armed=true;$('del').textContent='もう一度押すと消します';return;}await remove('visits',v.id);leaveVisit();mapSync();render();};
+}
+
+/* ---------- 味の記録 ---------- */
+function openForm({edit}){
+  const lastShop=[...D.visits].sort(byDate)[0]?.shop;
+  const f=edit?JSON.parse(JSON.stringify(edit)):{shop:state.shop||lastShop||(D.shops[0]&&D.shops[0].id)||null,date:today(),dish:'もり',origin:null,soba:null,tsuyu:null,again:null,words:[],price:null,memo:''};
+  if(!edit&&f.shop){const p=lastAt(f.shop);if(p&&p.origin)f.origin=p.origin;}
+  const L=$('layer1');
+  L.innerHTML=`<div class="over"><header><h2>${edit?'記録を直す':'今日のそば'}</h2><button id="fClose" type="button">閉じる</button></header><div class="scroll"><div class="view">
+    <div class="block"><span class="t">お店</span><div class="chips" id="fShops"></div></div>
+    <div class="block"><div class="pads" id="fPads"></div><p class="note" id="fGhost"></p></div>
+    <div class="block"><span class="t">次の気持ち</span><div class="seg" id="fAgain"></div></div>
+    <div class="block"><span class="t">食べたもの</span><div class="chips" id="fDish"></div></div>
+    <div class="block"><span class="t">産地（わからなければそのままで大丈夫です）</span><div class="chips" id="fOrg"></div></div>
+    <details><summary>言葉やその日の様子を足す（書かなくても大丈夫です）</summary><div class="wgroups" id="fWords"></div></details>
+    <details><summary>日付、値段、メモ（今日の日付が入っています）</summary><div class="block"><label class="t" for="fDate">日付</label><input type="date" id="fDate" value="${esc(f.date)}"><label class="t" for="fPrice">値段（円）</label><input type="number" inputmode="numeric" id="fPrice" value="${f.price||''}"><label class="t" for="fMemo">メモ</label><textarea id="fMemo" rows="3">${esc(f.memo)}</textarea></div></details>
+  </div></div><footer><p class="err" id="fErr" hidden></p><button class="go" id="fSave" type="button">記録する</button></footer></div>`;
+  const shopsDraw=()=>{
+    const sh=[...D.shops].sort((a,b)=>a.at-b.at);
+    $('fShops').innerHTML=sh.map(s=>`<button type="button" class="chip" aria-pressed="${f.shop===s.id}" data-id="${esc(s.id)}">${esc(s.name)}</button>`).join('')+'<button type="button" class="chip" id="fNew">＋ 新しいお店</button>';
+    $('fShops').querySelectorAll('[data-id]').forEach(b=>b.onclick=()=>{f.shop=b.dataset.id;shopsDraw();paint();});
+    $('fNew').onclick=()=>openShop(null,s=>{f.shop=s.id;shopsDraw();paint();});
+  };
+  const dishDraw=()=>{$('fDish').innerHTML=DISHES.map(d=>`<button type="button" class="chip" aria-pressed="${f.dish===d}" data-d="${d}">${d}</button>`).join('');$('fDish').querySelectorAll('button').forEach(b=>b.onclick=()=>{f.dish=f.dish===b.dataset.d?'':b.dataset.d;dishDraw();});};
+  const orgDraw=()=>{
+    const cur=f.origin&&f.origin.name,custom=f.origin&&!ORIGIN_DICT.some(o=>o.name===cur);
+    $('fOrg').innerHTML=`<button type="button" class="chip" aria-pressed="${!f.origin}" data-o="">わからない</button>`+ORIGIN_DICT.map(o=>`<button type="button" class="chip" aria-pressed="${cur===o.name}" data-o="${o.name}">${o.name}</button>`).join('')+(custom?`<button type="button" class="chip" aria-pressed="true" data-keep="1">${esc(cur)}</button>`:'')+'<button type="button" class="chip" id="fOrgPick">地図で指定</button>';
+    $('fOrg').querySelectorAll('[data-o]').forEach(b=>b.onclick=()=>{const o=ORIGIN_DICT.find(x=>x.name===b.dataset.o);f.origin=o?{name:o.name,place:o.place,p:o.p}:null;orgDraw();});
+    $('fOrgPick').onclick=async()=>{
+      const p=await pick({title:'産地の場所を指定',center:(f.origin&&f.origin.p)||HOME,zoom:f.origin?10:5});
+      if(p===undefined){showFormErr('地図を読み込めていません。通信できる場所で指定してください。');return;}
+      if(p)openOriginName(p,o=>{f.origin=o;orgDraw();});
+    };
+  };
+  function showFormErr(t){$('fErr').hidden=false;$('fErr').textContent=t;}
+  const againDraw=()=>{$('fAgain').innerHTML=AGAIN.map((t,i)=>`<button type="button" aria-pressed="${f.again===i}" data-i="${i}">${t}</button>`).join('');$('fAgain').querySelectorAll('button').forEach(b=>b.onclick=()=>{const i=+b.dataset.i;f.again=f.again===i?null:i;againDraw();});};
+  const wordsDraw=()=>{$('fWords').innerHTML=WORDS.map(g=>`<div><p class="t">${g.t}</p><div class="chips">${g.w.map(w=>`<button class="chip" type="button" data-w="${w}" aria-pressed="${f.words.includes(w)}">${w}</button>`).join('')}</div></div>`).join('');$('fWords').querySelectorAll('button').forEach(b=>b.onclick=()=>{const w=b.dataset.w;f.words=f.words.includes(w)?f.words.filter(x=>x!==w):[...f.words,w];wordsDraw();});};
+  function buildPad(k){
+    const a=AXIS[k];let dots='';
+    for(let i=0;i<5;i++)for(let j=0;j<5;j++)dots+=`<circle class="dot" cx="${10+20*i}" cy="${10+20*j}" r="1.3"/>`;
+    const box=document.createElement('div');box.className='padbox '+k;
+    box.innerHTML=`<p class="padname">${a.name}</p><div class="ax up">${a.up}</div><svg class="pad" id="pad-${k}" viewBox="0 0 100 100" tabindex="0" role="slider" aria-label="${a.name}の味" aria-valuetext="未入力"><line class="mid" x1="50" y1="0" x2="50" y2="100"/><line class="mid" x1="0" y1="50" x2="100" y2="50"/>${dots}<circle class="ghost" id="ghost-${k}" r="8" style="display:none"/><g class="mark" id="mark-${k}" style="display:none"><circle r="9"/></g></svg><div class="ax low"><span>${a.low[0]}</span><span>${a.low[1]}</span><span>${a.low[2]}</span></div><p class="read none" id="read-${k}"></p>`;
+    $('fPads').appendChild(box);
+    const pad=box.querySelector('svg');
+    const place=e=>{const r=pad.getBoundingClientRect();f[k]=[clamp(Math.floor((e.clientX-r.left)/r.width*5),0,4),clamp(4-Math.floor((e.clientY-r.top)/r.height*5),0,4)];paintPad(k);};
+    pad.addEventListener('pointerdown',e=>{e.preventDefault();pad.focus({preventScroll:true});try{pad.setPointerCapture(e.pointerId);}catch(x){}place(e);});
+    pad.addEventListener('pointermove',e=>{if(pad.hasPointerCapture&&pad.hasPointerCapture(e.pointerId))place(e);});
+    pad.addEventListener('keydown',e=>{const d={ArrowLeft:[-1,0],ArrowRight:[1,0],ArrowUp:[0,1],ArrowDown:[0,-1]}[e.key];if(!d)return;e.preventDefault();f[k]=f[k]?[clamp(f[k][0]+d[0],0,4),clamp(f[k][1]+d[1],0,4)]:[2,2];paintPad(k);});
+  }
+  function paintPad(k){
+    const v=f[k],m=$('mark-'+k),rd=$('read-'+k),pad=$('pad-'+k);
+    if(v){m.style.display='';m.style.transform=`translate(${px(v)}px,${py(v)}px)`;}else m.style.display='none';
+    rd.textContent=v?say(v,k):'押して入れます';rd.classList.toggle('none',!v);
+    pad.setAttribute('aria-valuetext',v?say(v,k):'未入力');
+    const l=f.shop?lastAt(f.shop,edit&&edit.id):null,g=$('ghost-'+k),gv=l&&l[k];
+    if(gv){g.style.display='';g.setAttribute('cx',px(gv));g.setAttribute('cy',py(gv));}else g.style.display='none';
+  }
+  function paint(){paintPad('soba');paintPad('tsuyu');const l=f.shop?lastAt(f.shop,edit&&edit.id):null;$('fGhost').textContent=l?`点線の輪は、このお店の前回（${md(l.date)}）です。`:'';}
+  $('fClose').onclick=()=>{L.innerHTML='';};
+  buildPad('soba');buildPad('tsuyu');shopsDraw();dishDraw();orgDraw();againDraw();wordsDraw();paint();
+  $('fSave').onclick=async()=>{
+    if(!f.shop){showFormErr('お店を選んでください。');return;}
+    if(!f.soba&&!f.tsuyu&&f.again===null){showFormErr('そば、つゆ、次の気持ちのどれかを入れてください。');return;}
+    const price=parseInt($('fPrice').value,10);
+    const rec={...f,id:(edit&&edit.id)||uid(),at:(edit&&edit.at)||Date.now(),date:$('fDate').value||today(),price:price>0?price:null,memo:$('fMemo').value.trim()};
+    try{await save('visits',rec);}catch(e){showFormErr('保存できませんでした。ブラウザの設定を確認してください。');return;}
+    L.innerHTML='';mapSync();state.tab='rec';pickVisit(rec.id);
+  };
+}
+function openOriginName(p,done){
+  const L=$('layer2');
+  L.innerHTML=`<div class="over"><header><h2>産地の名前</h2><button id="nClose" type="button">閉じる</button></header><div class="scroll"><div class="view"><div class="block"><label class="t" for="nName">産地や品種の名前</label><input type="text" id="nName" autocomplete="off"><p class="err" id="nErr" hidden></p></div></div></div><footer><button class="go" id="nSave" type="button">決める</button></footer></div>`;
+  $('nClose').onclick=()=>{L.innerHTML='';};
+  $('nSave').onclick=()=>{const n=$('nName').value.trim();if(!n){$('nErr').hidden=false;$('nErr').textContent='名前を入れてください。';return;}L.innerHTML='';done({name:n,place:'',p});};
+  setTimeout(()=>$('nName').focus(),50);
+}
+
+/* ---------- お店 ---------- */
+function openShop(shop,onDone){
+  const d=shop?{...shop}:{name:'',area:'',p:null,memo:''};
+  const L=$('layer2');
+  const used=shop&&D.visits.some(v=>v.shop===shop.id);
+  L.innerHTML=`<div class="over"><header><h2>${shop?'お店を直す':'お店を追加'}</h2><button id="sClose" type="button">閉じる</button></header><div class="scroll"><div class="view">
+    <div class="block"><label class="t" for="sName">お店の名前</label><input type="text" id="sName" value="${esc(d.name)}" autocomplete="off"></div>
+    <div class="block"><label class="t" for="sArea">地域（市区町村まで）</label><input type="text" id="sArea" value="${esc(d.area)}" autocomplete="off"></div>
+    <div class="block"><span class="t">場所</span><button class="sub" id="sPick" type="button">${d.p?'場所を指定し直す':'地図で場所を指定する'}</button><p class="note" id="sP"></p></div>
+    <div class="block"><label class="t" for="sMemo">メモ</label><textarea id="sMemo" rows="2">${esc(d.memo)}</textarea></div>
+    ${shop&&!used?'<button class="link" id="sDel" type="button">このお店を消す</button>':''}
+  </div></div><footer><p class="err" id="sErr" hidden></p><button class="go" id="sSave" type="button">お店を保存</button></footer></div>`;
+  const pText=()=>{$('sP').textContent=d.p?'場所を指定しました。':'場所を指定しないと地図には出ません。あとからでも指定できます。';};pText();
+  const close=()=>{L.innerHTML='';};
+  const err=t=>{$('sErr').hidden=false;$('sErr').textContent=t;};
+  $('sClose').onclick=close;
+  $('sPick').onclick=async()=>{
+    const last=D.shops.filter(s=>s.p).slice(-1)[0];
+    const p=await pick({title:'お店の場所を指定',center:d.p||(last&&last.p)||HOME,zoom:d.p?15:(last?11:5),geo:true});
+    if(p===undefined){err('地図を読み込めていません。通信できる場所で指定してください。');return;}
+    if(p){d.p=p;$('sPick').textContent='場所を指定し直す';pText();}
+  };
+  $('sSave').onclick=async()=>{
+    const name=$('sName').value.trim();
+    if(!name){err('お店の名前を入れてください。');$('sName').focus();return;}
+    const o={...(shop||{web:[],mine:{}}),id:(shop&&shop.id)||uid(),at:(shop&&shop.at)||Date.now(),name,area:$('sArea').value.trim(),p:d.p,memo:$('sMemo').value.trim()};
+    try{await save('shops',o);}catch(e){err('保存できませんでした。ブラウザの設定を確認してください。');return;}
+    close();mapSync();if(!$('layer1').innerHTML)render();onDone&&onDone(o);
+  };
+  if($('sDel')){let armed=false;$('sDel').onclick=async()=>{if(!armed){armed=true;$('sDel').textContent='もう一度押すと消します';return;}await remove('shops',shop.id);if(state.shop===shop.id)state.shop=null;close();mapSync();render();};}
+  if(!shop)setTimeout(()=>$('sName').focus(),50);
+}
+function makePrompt(name,area){
+  return `次のそば店について、Webで調べてください。
+
+店名：${name}
+地域：${area}
+
+調べる項目：${ITEMS}
+
+守ること：
+・同じ名前の別の店と混ざらないよう、地域を確かめてください。
+・ページに書かれていることだけを書き、推測で埋めないでください。
+・わからない項目は、項目ごと省いてください。
+・資料によって内容が違うときは、項目を分けて両方書いてください。
+・口コミの文章は写さず、短く要約してください。
+・項目ごとに、確かめたページのURLを「出典」に入れてください。
+
+答えは下の形のJSONだけを、コードブロック1つで返してください。
+
+{"店名":"","地域":"","項目":[{"名前":"定休日","内容":"","出典":"https://"}]}`;
+}
+function parseResult(txt){
+  const a=txt.indexOf('{'),b=txt.lastIndexOf('}');
+  if(a<0||b<=a)throw 0;
+  const o=JSON.parse(txt.slice(a,b+1));
+  if(!o||!Array.isArray(o['項目']))throw 0;
+  const items=o['項目'].filter(x=>x&&x['名前']&&x['内容']).map(x=>({n:String(x['名前']),v:String(x['内容']),src:okUrl(x['出典'])?String(x['出典']):''}));
+  if(!items.length)throw 0;
+  return {name:String(o['店名']||''),area:String(o['地域']||''),items};
+}
+let cand=null;
+function setMsg(id,text,err){const e=$(id);e.textContent=text;e.className=err?'err':'msg';}
+function drawMise(openId){
+  cand=null;
+  const shops=[...D.shops].sort((a,b)=>b.at-a.at);
+  $('view').innerHTML=`
+    <button class="go" id="mAdd" type="button">お店を追加</button>
+    <details id="mHelp"${shops.length?'':' open'}><summary>ネットで調べて情報を入れる</summary>
+      <ol class="steps">
+        <li><p class="st">お店の名前と地域を入れて、依頼文をコピーします。</p>
+          <label class="t" for="mName">お店の名前</label><input type="text" id="mName" autocomplete="off">
+          <label class="t" for="mArea">地域（市区町村まで）</label><input type="text" id="mArea" autocomplete="off">
+          <button class="sub" id="mCopy" type="button">調べる文章をコピー</button>
+          <textarea id="mPrompt" rows="6" readonly hidden aria-label="調べる文章"></textarea>
+          <p class="msg" id="mCopyMsg" role="status"></p></li>
+        <li><p class="st"><a href="https://claude.ai/new" target="_blank" rel="noopener">Claudeのチャット</a>に貼って送ります。Web検索を使える状態にしてください。</p></li>
+        <li><p class="st">返ってきた答えを、そのまま下に貼ります。</p>
+          <textarea id="mPaste" rows="4" aria-label="返ってきた答え"></textarea>
+          <button class="sub" id="mRead" type="button">読み取る</button>
+          <p class="msg" id="mReadMsg" role="status"></p></li>
+      </ol>
+      <div class="cand" id="cand" hidden><h2 id="candH"></h2><p class="note">出典を確かめて、残すものにチェックを入れてください。</p><div id="candList"></div><button class="go" id="mSave" type="button">チェックしたものを保存</button></div>
+      <p class="msg" id="mSaveMsg" role="status"></p>
+    </details>
+    <div class="block"><h2>お店の情報</h2><div id="cards">${shops.length?shops.map(s=>cardHtml(s,s.id===openId)).join(''):'<p class="note">まだお店がありません。</p>'}</div></div>`;
+  $('mAdd').onclick=()=>openShop(null);
+  $('mCopy').onclick=async()=>{
+    const name=$('mName').value.trim(),area=$('mArea').value.trim();
+    if(!name||!area){setMsg('mCopyMsg','お店の名前と地域を入れてください。同じ名前の店と区別するために使います。',true);return;}
+    const text=makePrompt(name,area),box=$('mPrompt');box.value=text;
+    try{await navigator.clipboard.writeText(text);box.hidden=true;setMsg('mCopyMsg','コピーしました。');}
+    catch(e){box.hidden=false;box.focus();box.select();setMsg('mCopyMsg','コピーできませんでした。上の文章を長押ししてコピーしてください。',true);}
+  };
+  $('mRead').onclick=()=>{
+    setMsg('mSaveMsg','');
+    try{cand=parseResult($('mPaste').value);}
+    catch(e){cand=null;$('cand').hidden=true;setMsg('mReadMsg','読み取れませんでした。Claudeの答えを最初から最後まで貼ってください。',true);return;}
+    setMsg('mReadMsg','');
+    if($('mName').value.trim())cand.name=$('mName').value.trim();
+    if($('mArea').value.trim())cand.area=$('mArea').value.trim();
+    const count={};cand.items.forEach(i=>count[i.n]=(count[i.n]||0)+1);
+    $('candH').textContent=cand.name+(cand.area?'（'+cand.area+'）':'');
+    $('candList').innerHTML=cand.items.map((i,x)=>{const clash=count[i.n]>1;return `<label class="cr"><input type="checkbox" id="c${x}" ${i.src&&!clash?'checked':''}><span><span class="cn">${esc(i.n)}</span><span class="cv">${esc(i.v)}</span>${i.src?`<span class="cs"><a href="${esc(i.src)}" target="_blank" rel="noopener">${esc(host(i.src))}</a></span>`:'<span class="warn">出典がありません</span>'}${clash?'<span class="warn">資料で内容が違います。どちらかを選んでください</span>':''}</span></label>`;}).join('');
+    $('cand').hidden=false;
+  };
+  $('mSave').onclick=async()=>{
+    if(!cand||!cand.name){setMsg('mSaveMsg','お店の名前がわかりません。上の欄に入れてから、もう一度読み取ってください。',true);return;}
+    const date=today(),web=cand.items.filter((_,x)=>$('c'+x).checked).map(i=>({...i,date}));
+    let s=D.shops.find(z=>z.name===cand.name);
+    s=s?{...s,web,area:cand.area||s.area}:{id:uid(),at:Date.now(),name:cand.name,area:cand.area,p:null,memo:'',web,mine:{}};
+    try{await save('shops',s);}catch(e){setMsg('mSaveMsg','保存できませんでした。ブラウザの設定を確認してください。',true);return;}
+    const nm=s.name;drawMise(s.id);setMsg('mSaveMsg','');
+    $('mHelp').open=true;setMsg('mSaveMsg',`${nm}を保存しました。`);
+  };
+  $('cards').addEventListener('click',async e=>{
+    const ed=e.target.closest('[data-ed]');if(ed){openShop(shopOf(ed.dataset.ed),o=>{drawMise(o.id);});return;}
+    const re=e.target.closest('[data-re]');
+    if(re){const s=shopOf(re.dataset.re);if(!s)return;$('mHelp').open=true;$('mName').value=s.name;$('mArea').value=s.area||'';setMsg('mCopyMsg','名前と地域を入れました。「調べる文章をコピー」を押してください。');$('pane').scrollTop=0;return;}
+    const b=e.target.closest('[data-v]');if(!b)return;
+    const box=b.parentElement,k=box.dataset.g,one=box.dataset.one==='1',s=shopOf(b.dataset.s);if(!s)return;
+    const mine={...(s.mine||{})};let cur=mine[k]||[];const v=b.dataset.v;
+    cur=cur.includes(v)?cur.filter(x=>x!==v):(one?[v]:[...cur,v]);mine[k]=cur;
+    await save('shops',{...s,mine});
+    box.querySelectorAll('button').forEach(x=>x.setAttribute('aria-pressed',String(cur.includes(x.dataset.v))));
+  });
+}
+function cardHtml(s,open){
+  const web=(s.web&&s.web.length)?`<dl>${s.web.map(w=>`<div><dt>${esc(w.n)}</dt><dd>${esc(w.v)}${w.src&&okUrl(w.src)?`<span class="cs"><a href="${esc(w.src)}" target="_blank" rel="noopener">${esc(host(w.src))}</a>、${esc(w.date)} 確認</span>`:`<span class="cs">${esc(w.date)} 確認</span>`}${STALE.includes(w.n)&&old(w.date)?'<span class="warn">確認から1年以上たっています</span>':''}</dd></div>`).join('')}</dl>`:'<p class="note">まだ調べていません。</p>';
+  const mine=MINE.map(g=>`<div><p class="t">${g.t}</p><div class="chips" data-g="${g.k}" data-one="${g.one?1:0}">${g.o.map(o=>`<button class="chip" type="button" data-s="${esc(s.id)}" data-v="${o}" aria-pressed="${((s.mine||{})[g.k]||[]).includes(o)}">${o}</button>`).join('')}</div></div>`).join('');
+  const n=D.visits.filter(v=>v.shop===s.id).length;
+  return `<details class="card"${open?' open':''}><summary>${esc(s.name)} <small>${esc(s.area||'')}</small></summary><div class="cb">
+    <p class="note">${s.p?'地図に出ています':'地図の場所は未指定です'}、記録${n}件${s.memo?'<br>'+esc(s.memo):''}</p>
+    <div class="block"><p class="t">ネットで調べたこと</p>${web}</div>
+    <div class="block"><p class="t">自分で見たこと</p><div class="wgroups">${mine}</div></div>
+    <div class="row"><button class="sub" type="button" data-ed="${esc(s.id)}">名前や場所を直す</button><button class="link" type="button" data-re="${esc(s.id)}">調べ直す</button></div>
+  </div></details>`;
+}
+
+/* ---------- 控え ---------- */
+function drawBack(){
+  const last=+kv('lastBackup')||0;
+  $('view').innerHTML=`<h2>バックアップ</h2>
+    <p>記録はこの端末の中だけに保存されています。ブラウザの「Cookieとサイトデータ」を消すと、記録も消えます。ときどき書き出して、Googleドライブなどに置いておくと安心です。</p>
+    <p class="note">今の記録：お店 ${D.shops.length}軒、そば ${D.visits.length}件<br>最後の書き出し：${last?md(new Date(last).toISOString()):'まだありません'}</p>
+    <div class="row"><button class="go" style="width:auto;padding:0 18px" id="bOut" type="button">書き出す</button><button class="sub" id="bIn" type="button">書き出したファイルから戻す</button><input type="file" id="bFile" accept=".json,application/json" hidden></div>
+    <p class="err" id="bErr" hidden></p><div id="bMsg" class="block"></div>
+    <p class="note">そばミル ${VERSION}</p>`;
+  $('bOut').onclick=()=>{
+    const data={app:'sobamiru',version:1,exportedAt:new Date().toISOString(),shops:D.shops,visits:D.visits};
+    const url=URL.createObjectURL(new Blob([JSON.stringify(data)],{type:'application/json'}));
+    const a=document.createElement('a');a.href=url;a.download=`sobamiru-${today()}.json`;document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),4000);
+    kv('lastBackup',String(Date.now()));drawBack();$('bMsg').textContent='書き出しました。ダウンロードフォルダを確認してください。';
+  };
+  $('bIn').onclick=()=>$('bFile').click();
+  $('bFile').onchange=async()=>{
+    const file=$('bFile').files[0];if(!file)return;
+    let data;
+    try{data=JSON.parse(await file.text());if(data.app!=='sobamiru'||!Array.isArray(data.visits)||!Array.isArray(data.shops))throw 0;}
+    catch(e){$('bErr').hidden=false;$('bErr').textContent='そばミルのバックアップファイルではありません。ファイルを確かめてください。';return;}
+    $('bErr').hidden=true;
+    $('bMsg').innerHTML=`<p>今の記録を消して、このファイルの内容（お店 ${data.shops.length}軒、そば ${data.visits.length}件）に置き換えます。</p><button class="go" id="bDo" type="button">置き換える</button>`;
+    $('bDo').onclick=async()=>{
+      for(const s of STORES){await tx(s,'readwrite',st=>st.clear());for(const o of data[s])await tx(s,'readwrite',st=>st.put(o));}
+      await dbLoad();state.shop=null;state.visit=null;mapSync();render();$('bMsg')&&($('bMsg').textContent='戻しました。');
+    };
+  };
+}
+
+/* ---------- 地図：計算 ---------- */
+const R=Math.PI/180,K=25000;
 function gcKm(a,b){const p1=a[1]*R,p2=b[1]*R,dp=p2-p1,dl=(b[0]-a[0])*R,h=Math.sin(dp/2)**2+Math.cos(p1)*Math.cos(p2)*Math.sin(dl/2)**2;return 2*6371*Math.asin(Math.sqrt(h));}
 function brg(a,b){const p1=a[1]*R,p2=b[1]*R,dl=(b[0]-a[0])*R;return Math.atan2(Math.sin(dl)*Math.cos(p2),Math.cos(p1)*Math.sin(p2)-Math.sin(p1)*Math.cos(p2)*Math.cos(dl))/R;}
-/* 産地から店へ、少しだけふくらませた線（距離が短いと直線では味気ないため） */
 function bowLine(a,b){
   const S=gcKm(a,b),n=Math.max(60,Math.ceil(S/3)),h=brg(a,b)*R,pts=[];
-  for(let i=0;i<=n;i++){
-    const t=i/n,off=S*.05*Math.sin(Math.PI*t),lat=a[1]+(b[1]-a[1])*t;
-    pts.push([a[0]+(b[0]-a[0])*t+off*Math.cos(h)/(111*Math.cos(lat*R)),lat-off*Math.sin(h)/111]);
-  }
+  for(let i=0;i<=n;i++){const t=i/n,off=S*.05*Math.sin(Math.PI*t),lat=a[1]+(b[1]-a[1])*t;pts.push([a[0]+(b[0]-a[0])*t+off*Math.cos(h)/(111*Math.cos(lat*R)),lat-off*Math.sin(h)/111]);}
   return pts;
 }
 function makeRoute(a,b){
@@ -70,7 +535,6 @@ function makeRoute(a,b){
   const heading=x=>{const d=Math.max(2,S*.02);return brg(pos(x-d),pos(x+d));};
   return {pts,S,pos,heading};
 }
-/* 画面に見える幅を、出発点・到着点からの距離に比例させる（豆ミルと同じ考え方）。山の間だけ低く保つ */
 function makePlan(S){
   const zc=clamp(11.6-Math.log2(S/100),7.4,11.2),W=z=>K/2**z,wc=W(zc),w0=W(CAM.farm),ws=W(CAM.shop);
   const width=x=>Math.min(wc,w0+CAM.slope*x,ws+CAM.slope*(S-x));
@@ -88,43 +552,42 @@ function makePlan(S){
 const endSoft=(t,e)=>t<1-e?t/(1-e/2):1-(1-t)**2/(e*(2-e));
 const easeIn=t=>endSoft(t,.05)**2.4;
 const bothEnds=(t,e)=>t<e?t*t/(2*e*(1-e)):t<1-e?(t-e/2)/(1-e):1-(1-t)**2/(2*e*(1-e));
-/* 引きは速く始まって減速し、店への寄りはゆっくり始まって加速する */
 const flightTime=t=>{const s=bothEnds(t,.04);return clamp(s+CAM.swing*Math.sin(2*Math.PI*s)/(2*Math.PI),0,1);};
 
-/* ---------- 地図 ---------- */
-const $=id=>document.getElementById(id);
-const calm=matchMedia('(prefers-reduced-motion:reduce)').matches;
-const state={org:'togakushi',look:'photo'};
-let map,marker,run=0,ready=false;
+/* ---------- 地図：表示 ---------- */
 const fc=f=>({type:'FeatureCollection',features:f});
-function chips(el,items,get,set){
-  el.innerHTML=items.map(([k,t])=>`<button class="chip" type="button" data-k="${k}" aria-pressed="${get()===k}">${t}</button>`).join('');
-  el.querySelectorAll('button').forEach(b=>b.onclick=()=>{set(b.dataset.k);drawUI();});
-}
-function caption(){
-  const o=ORIGINS.find(x=>x.id===state.org);
-  $('cap').innerHTML=`${o.name} → ${SHOP.name}<small>${o.sub}、およそ${Math.round(gcKm(o.p,SHOP.p))}km</small>`;
-}
-function drawUI(){
-  chips($('org'),ORIGINS.map(o=>[o.id,o.name.split(' ')[1]]),()=>state.org,v=>{state.org=v;});
-  caption();
-}
-function showErr(t){$('err').hidden=false;$('err').textContent=t;}
+const lineF=(c,props)=>({type:'Feature',geometry:{type:'LineString',coordinates:c},properties:props||{}});
+const ptF=(p,props)=>({type:'Feature',geometry:{type:'Point',coordinates:p},properties:props||{}});
+function homeZoom(){const c=map.getContainer(),s=Math.max(160,Math.min(c.clientWidth,c.clientHeight));return Math.log2(32000*s/(512*1500));}
+function showMapMsg(t){$('mapMsg').hidden=false;$('mapMsg').textContent=t;}
 function tint(){
   for(const l of map.getStyle().layers){
     const id=l.id,set=(p,v)=>{try{map.setPaintProperty(id,p,v);}catch(e){}};
     if(l.type==='background')set('background-color',COL.land);
     else if(l.type==='fill'){if(/water/.test(id))set('fill-color',COL.sea);else if(/hillshade/.test(id))set('fill-opacity',0);else set('fill-color',COL.land2);}
     else if(l.type==='line'){if(/water/.test(id))set('line-color',COL.sea);else if(!/admin/.test(id))set('line-color',COL.road);}
-    else if(l.type==='symbol'){
-      try{const tf=map.getLayoutProperty(id,'text-field');if(JSON.stringify(tf||'').includes('name'))map.setLayoutProperty(id,'text-field',['coalesce',['get','name_ja'],['get','name']]);}catch(e){}
-    }
+    else if(l.type==='symbol'){try{const tf=map.getLayoutProperty(id,'text-field');if(JSON.stringify(tf||'').includes('name'))map.setLayoutProperty(id,'text-field',['coalesce',['get','name_ja'],['get','name']]);}catch(e){}}
   }
+}
+function satOn(on){if(!ready)return;map.setLayoutProperty('sat','visibility',on?'visible':'none');map.setPaintProperty('sat','raster-opacity',on?1:0);}
+function mapSync(){
+  if(!ready)return;
+  const pair={},org={};
+  D.visits.forEach(v=>{const e=ends(v);if(state.shop&&v.shop!==state.shop)return;if(e){pair[e[0].join()+'>'+v.shop]={e};}if(v.origin&&v.origin.p)org[v.origin.p.join()]=ptF(v.origin.p,{name:v.origin.name});});
+  map.getSource('routes').setData(fc(Object.values(pair).map(o=>lineF(bowLine(o.e[0],o.e[1])))));
+  map.getSource('origins').setData(fc(Object.values(org)));
+  map.getSource('shops').setData(fc(D.shops.filter(s=>s.p).map(s=>ptF(s.p,{k:s.id,name:s.name}))));
 }
 function initMap(){
   mapboxgl.accessToken=TOKEN;
-  map=new mapboxgl.Map({container:'map',style:'mapbox://styles/mapbox/light-v11',center:HOME,zoom:CAM.start,projection:'globe',interactive:false,attributionControl:true,pixelRatio:Math.min(devicePixelRatio||1,2)});
-  map.on('error',e=>{if(!ready)showErr('地図を読み込めませんでした。通信できる場所で開き直してください。');console.warn(e&&e.error);});
+  map=new mapboxgl.Map({container:'map',style:'mapbox://styles/mapbox/light-v11',center:HOME,zoom:4,projection:'globe',pixelRatio:Math.min(devicePixelRatio||1,2)});
+  map.jumpTo({zoom:homeZoom()});
+  map.on('error',e=>{const st=e.error&&e.error.status;if((st===401||st===403)&&e.sourceId!=='sat')showMapMsg('地図を読み込めません。MapboxのトークンのURL制限に、このページのアドレスを追加してください。');});
+  map.on('click',e=>{
+    if(!ready||state.picking)return;
+    const r=16,hit=map.queryRenderedFeatures([[e.point.x-r,e.point.y-r],[e.point.x+r,e.point.y+r]],{layers:['shops']});
+    if(hit.length){state.visit=null;state.tab='rec';state.shop=hit[0].properties.k;render();focusShop();}
+  });
   map.on('load',()=>{
     tint();
     const first=(map.getStyle().layers.find(l=>l.type==='symbol')||{}).id;
@@ -134,47 +597,61 @@ function initMap(){
     map.setFog({color:'#E7E9E4','high-color':'#B9C5CF','horizon-blend':.08,'space-color':'#1B2636','star-intensity':0});
     map.addLayer({id:'sumi',type:'hillshade',source:'dem2',paint:{'hillshade-shadow-color':'#0E1216','hillshade-highlight-color':'#FFFFFF','hillshade-accent-color':'#2A3440','hillshade-exaggeration':1}},first);
     map.addSource('sat',{type:'raster',url:'mapbox://mapbox.satellite',tileSize:256});
-    map.addLayer({id:'sat',type:'raster',source:'sat',minzoom:4,paint:{'raster-opacity':0,'raster-fade-duration':0}},first);
+    map.addLayer({id:'sat',type:'raster',source:'sat',minzoom:4,layout:{visibility:'none'},paint:{'raster-opacity':0,'raster-fade-duration':0}},first);
+    map.addSource('routes',{type:'geojson',data:fc([])});
+    map.addLayer({id:'routes',type:'line',source:'routes',layout:{'line-cap':'round','line-join':'round'},paint:{'line-color':COL.shu,'line-width':1.6,'line-opacity':.75}});
     map.addSource('hl',{type:'geojson',lineMetrics:true,data:fc([])});
     map.addLayer({id:'hl-case',type:'line',source:'hl',layout:{'line-cap':'round','line-join':'round'},paint:{'line-color':COL.paper,'line-width':6,'line-opacity':.9}});
     map.addLayer({id:'hl',type:'line',source:'hl',layout:{'line-cap':'round','line-join':'round'},paint:{'line-color':COL.shu,'line-width':3.2}});
+    map.addSource('origins',{type:'geojson',data:fc([])});
+    map.addLayer({id:'origins',type:'circle',source:'origins',paint:{'circle-color':COL.shu,'circle-stroke-color':COL.paper,'circle-stroke-width':1.5,'circle-radius':5}});
+    map.addLayer({id:'origin-name',type:'symbol',source:'origins',layout:{'text-field':['get','name'],'text-size':12,'text-offset':[0,.95],'text-anchor':'top'},paint:{'text-color':COL.ink,'text-halo-color':COL.paper,'text-halo-width':1.6}});
+    map.addSource('shops',{type:'geojson',data:fc([])});
+    map.addLayer({id:'shops',type:'circle',source:'shops',paint:{'circle-color':COL.ink,'circle-stroke-color':COL.paper,'circle-stroke-width':2,'circle-radius':6}});
+    map.addLayer({id:'shop-name',type:'symbol',source:'shops',minzoom:7,layout:{'text-field':['get','name'],'text-size':13,'text-offset':[0,1],'text-anchor':'top'},paint:{'text-color':COL.ink,'text-halo-color':COL.paper,'text-halo-width':1.8}});
     const el=document.createElement('div');el.className='seed';
-    /* そばの実は三角の粒 */
-    const SEED_SVG='<svg viewBox="0 0 24 24" width="24" height="24"><path d="M12 2.5 21 20H3Z" fill="#3A2A20" stroke="#FBFCFA" stroke-width="1.6" stroke-linejoin="round"/><path d="M12 5.5V19" stroke="#FBFCFA" stroke-width="1" fill="none"/></svg>';
-    el.innerHTML=SEED_SVG;
+    el.innerHTML='<svg viewBox="0 0 24 24" width="24" height="24"><path d="M12 2.5 21 20H3Z" fill="#3A2A20" stroke="#FBFCFA" stroke-width="1.6" stroke-linejoin="round"/><path d="M12 5.5V19" stroke="#FBFCFA" stroke-width="1" fill="none"/></svg>';
     marker=new mapboxgl.Marker({element:el,rotationAlignment:'viewport',pitchAlignment:'viewport'});
-    ready=true;applyLook();$('go').disabled=false;$('go').textContent='産地から店へ飛ぶ';
+    ready=true;$('mapMsg').hidden=true;mapSync();
+    if(state.visit){const v=visitOf(state.visit);if(v&&ends(v))fly(v);}
   });
+  addEventListener('resize',()=>map.resize());
 }
 const trim=v=>{map.setPaintProperty('hl','line-trim-offset',v);map.setPaintProperty('hl-case','line-trim-offset',v);};
-/* 墨絵はずっと墨絵、衛星写真はずっと写真。押した瞬間に今の画面へ反映する */
-function applyLook(){if(!ready)return;const on=state.look==='photo';map.setLayoutProperty('sat','visibility',on?'visible':'none');map.setPaintProperty('sat','raster-opacity',on?1:0);}
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 function idle(ms){return new Promise(res=>{const on=()=>{clearTimeout(t);res();};map.once('idle',on);const t=setTimeout(()=>{map.off('idle',on);res();},ms);});}
 function frames(dur,fn,my){return new Promise(res=>{const t0=performance.now();(function tick(now){if(my!==run)return res();const p=clamp((now-t0)/dur,0,1);fn(p);p<1?requestAnimationFrame(tick):res();})(t0);});}
-
-async function fly(){
+function setFlying(on,now){document.body.classList.toggle('flying',on);document.body.classList.toggle('flyingNow',!!now);if(map)map.resize();}
+function goHome(){
+  run++;$('float').hidden=true;setFlying(false,false);
   if(!ready)return;
-  const my=++run,o=ORIGINS.find(x=>x.id===state.org),r=makeRoute(o.p,SHOP.p),plan=makePlan(r.S),c=r.pts,last=c.length-1;
+  marker.remove();map.getSource('hl').setData(fc([]));satOn(false);
+  map.flyTo({center:HOME,zoom:homeZoom(),pitch:0,bearing:0,duration:calm?0:1400,essential:!calm});
+}
+/* 列島→産地→山を越えて→店。カメラの数値は試作で決めたもの */
+async function fly(v){
+  if(!ready)return;
+  const en=ends(v);if(!en)return;
+  const [op,sp]=en,my=++run,r=makeRoute(op,sp),plan=makePlan(r.S),c=r.pts,last=c.length-1;
   const startB=r.heading(0),endB=r.heading(r.S);
   const cm=[0],mercY=la=>Math.log(Math.tan(Math.PI/4+la*R/2))/(2*Math.PI);
   for(let i=1;i<=last;i++)cm.push(cm[i-1]+Math.hypot((c[i][0]-c[i-1][0])/360,mercY(c[i][1])-mercY(c[i-1][1])));
   const trimAt=x=>{const f=clamp(x/r.S,0,1)*last,i=Math.min(last-1,Math.floor(f)),u=f-i;return clamp((cm[i]+(cm[i+1]-cm[i])*u)/cm[last],.00001,.99999);};
-  const line=fc([{type:'Feature',geometry:{type:'LineString',coordinates:c},properties:{}}]);
-  $('go').disabled=true;$('go').textContent='飛んでいます';
+  const line=fc([lineF(c)]);
+  $('float').hidden=true;setFlying(true,true);
   map.getSource('hl').setData(fc([]));
-  marker.setLngLat(o.p).addTo(map);
-  if(calm){map.getSource('hl').setData(line);trim([0,0]);marker.setLngLat(SHOP.p);map.jumpTo({center:SHOP.p,zoom:CAM.shop,pitch:0,bearing:0});$('go').disabled=false;$('go').textContent='もう一度飛ぶ';return;}
-  /* 列島から産地へ。ゆっくり→だんだん速く */
-  map.jumpTo({center:HOME,zoom:CAM.start,pitch:0,bearing:0});applyLook();
-  try{map.easeTo({center:o.p,zoom:CAM.farm,pitch:CAM.pitchEnd,bearing:startB,duration:1,preloadOnly:true});map.easeTo({center:SHOP.p,zoom:CAM.shop,pitch:CAM.pitchEnd,bearing:endB,duration:1,preloadOnly:true});[.2,.35,.5,.65,.8].forEach(f=>{const x=r.S*f;map.easeTo({center:r.pos(x),zoom:plan.zc,pitch:CAM.pitchCruise,bearing:r.heading(x),duration:1,preloadOnly:true});});}catch(e){}
+  marker.setLngLat(op).addTo(map);
+  const finish=()=>{setFlying(true,false);$('float').hidden=false;};
+  if(calm){map.getSource('hl').setData(line);trim([0,0]);marker.setLngLat(sp);map.jumpTo({center:sp,zoom:CAM.shop,pitch:0,bearing:0});finish();return;}
+  const start=homeZoom();
+  map.jumpTo({center:HOME,zoom:start,pitch:0,bearing:0});satOn(true);
+  try{map.easeTo({center:op,zoom:CAM.farm,pitch:CAM.pitchEnd,bearing:startB,duration:1,preloadOnly:true});map.easeTo({center:sp,zoom:CAM.shop,pitch:CAM.pitchEnd,bearing:endB,duration:1,preloadOnly:true});[.2,.35,.5,.65,.8].forEach(f=>{const x=r.S*f;map.easeTo({center:r.pos(x),zoom:plan.zc,pitch:CAM.pitchCruise,bearing:r.heading(x),duration:1,preloadOnly:true});});}catch(e){}
   await frames(CAM.approach,p=>{
-    const zoom=CAM.start+(CAM.farm-CAM.start)*easeIn(p),m=smooth(0,.62,p),k=smooth(CAM.start+3,CAM.farm-1,zoom);
-    map.jumpTo({center:[HOME[0]+(o.p[0]-HOME[0])*m,HOME[1]+(o.p[1]-HOME[1])*m],zoom,pitch:CAM.pitchEnd*k,bearing:startB*smooth(.1,.98,p)});
+    const zoom=start+(CAM.farm-start)*easeIn(p),m=smooth(0,.62,p),k=smooth(start+3,CAM.farm-1,zoom);
+    map.jumpTo({center:[HOME[0]+(op[0]-HOME[0])*m,HOME[1]+(op[1]-HOME[1])*m],zoom,pitch:CAM.pitchEnd*k,bearing:startB*smooth(.1,.98,p)});
   },my);
   if(my!==run)return;
   await sleep(CAM.hold);await idle(1800);if(my!==run)return;
-  /* 線は先に丸ごと渡し、見える長さだけを毎コマ変える */
   map.getSource('hl').setData(line);trim([.00001,1]);
   await frames(plan.duration,p=>{
     const {x,zoom}=plan.at(flightTime(p)),pos=r.pos(x),lv=1-smooth(plan.zc,plan.zc+2.2,zoom);
@@ -182,13 +659,49 @@ async function fly(){
     map.jumpTo({center:pos,zoom,pitch:CAM.pitchEnd+(CAM.pitchCruise-CAM.pitchEnd)*lv,bearing:r.heading(x)});
   },my);
   if(my!==run)return;
-  trim([0,0]);marker.setLngLat(SHOP.p);
-  $('go').disabled=false;$('go').textContent='もう一度飛ぶ';
+  trim([0,0]);marker.setLngLat(sp);finish();
 }
-$('go').onclick=fly;
-drawUI();
-const css=document.createElement('link');css.rel='stylesheet';css.href=MB+'/mapbox-gl.css';document.head.append(css);
-const sc=document.createElement('script');sc.src=MB+'/mapbox-gl.js';sc.onload=initMap;sc.onerror=()=>showErr('地図の部品を読み込めませんでした。通信できる場所で開き直してください。');document.head.append(sc);
+$('float').onclick=()=>{goHome();};
+
+/* ---------- 地図で場所を指定 ---------- */
+function pick({title,center,zoom,geo}){
+  return new Promise(res=>{
+    if(!ready)return res(undefined);
+    run++;marker.remove();map.getSource('hl').setData(fc([]));satOn(false);
+    state.picking=true;$('float').hidden=true;
+    $('layer1').hidden=$('layer2').hidden=true;
+    document.body.classList.add('picking');document.body.classList.remove('flying','flyingNow');map.resize();
+    $('cross').hidden=false;
+    map.flyTo({center,zoom,pitch:0,bearing:0,duration:1200,essential:true});
+    const bar=$('pickBar');bar.hidden=false;
+    bar.innerHTML=`<b>${esc(title)}</b><div class="note">地図を動かして、十字を場所に合わせてください。二本指で拡大できます。</div><div class="row">${geo?'<button class="sub" id="pGeo" type="button">今いる場所を使う</button>':''}<button class="sub" id="pOk" type="button">ここに決める</button><button class="link" id="pNo" type="button">やめる</button></div><p class="err" id="pErr" hidden></p>`;
+    const done=p=>{
+      bar.hidden=true;$('cross').hidden=true;$('layer1').hidden=$('layer2').hidden=false;state.picking=false;
+      document.body.classList.remove('picking');map.resize();res(p);
+    };
+    $('pOk').onclick=()=>{const c=map.getCenter().wrap();done([+c.lng.toFixed(5),+c.lat.toFixed(5)]);};
+    $('pNo').onclick=()=>done(null);
+    if(geo)$('pGeo').onclick=()=>{
+      const err=t=>{$('pErr').hidden=false;$('pErr').textContent=t;};
+      if(!navigator.geolocation)return err('この端末では現在地を使えません。地図で合わせてください。');
+      navigator.geolocation.getCurrentPosition(g=>map.flyTo({center:[g.coords.longitude,g.coords.latitude],zoom:16.5,duration:1200,essential:true}),()=>err('現在地を取得できませんでした。地図で合わせてください。'),{enableHighAccuracy:true,timeout:9000});
+    };
+  });
+}
+
+/* ---------- 起動 ---------- */
+function loadMap(){
+  const fail=()=>{if(!ready)showMapMsg('地図は通信できるときに表示されます。記録はこのまま使えます。');};
+  const css=document.createElement('link');css.rel='stylesheet';css.href=MB+'/mapbox-gl.css';document.head.append(css);
+  const sc=document.createElement('script');sc.src=MB+'/mapbox-gl.js';sc.onload=initMap;sc.onerror=fail;document.head.append(sc);
+  setTimeout(fail,10000);
+}
+(async()=>{
+  try{await openDB();await dbLoad();}
+  catch(e){showMapMsg('この端末では記録を保存できません。ブラウザの設定を確認してください。');}
+  render();loadMap();
+  if('serviceWorker' in navigator)navigator.serviceWorker.register('sw.js',{scope:'./'}).catch(()=>{});
+})();
 </script>
 </body>
 </html>
