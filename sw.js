@@ -1,5 +1,5 @@
 // そばミル サービスワーカー。消す控えは「sobamiru-」で始まるものだけ（同じアドレスのほかのアプリには触らない）
-const CACHE = 'sobamiru-v2';
+const CACHE = 'sobamiru-v3';
 const MAPLIB = 'https://api.mapbox.com/mapbox-gl-js/';
 self.addEventListener('install', () => self.skipWaiting());
 self.addEventListener('activate', e => {
