@@ -131,11 +131,12 @@ summary{cursor:pointer;font-size:14px;color:var(--ai);min-height:36px;display:fl
 .dl dt{font-size:13px;color:var(--muted)}
 .dl dd{margin:0;font-size:14px;overflow-wrap:anywhere}
 .seed{filter:drop-shadow(0 1px 2px rgba(0,0,0,.5))}
+#seedFix{position:absolute;left:50%;top:50%;width:28px;height:28px;margin:-14px 0 0 -14px;z-index:1;pointer-events:none}
 @media (prefers-reduced-motion:reduce){.mark{transition:none}}
 </style>
 </head>
 <body>
-<div id="mapWrap"><div id="map"></div><div id="cross" hidden></div><button id="float" type="button" hidden>全体に戻す</button><div id="mapMsg" hidden></div></div>
+<div id="mapWrap"><div id="map"></div><div id="cross" hidden></div><div id="seedFix" class="seed" hidden></div><button id="float" type="button" hidden>全体に戻す</button><div id="mapMsg" hidden></div></div>
 <div id="pickBar" hidden></div>
 <main id="pane">
   <nav class="tabs" id="tabs" aria-label="画面の切り替え"></nav>
@@ -145,7 +146,7 @@ summary{cursor:pointer;font-size:14px;color:var(--ai);min-height:36px;display:fl
 <div id="layer2"></div>
 
 <script>
-const VERSION='版6';
+const VERSION='版7';
 const TOKEN='pk.eyJ1IjoiaG9yaWhha28iLCJhIjoiY211djd0ejljMDA5ZjMycHYxaTY3M3BsdSJ9.a1yefJYynC4k_YvllM5DVw';
 const MB='https://api.mapbox.com/mapbox-gl-js/v3.9.0';
 const HOME=[138.3,37.2];
@@ -537,7 +538,8 @@ function makeRoute(a,b){
 }
 function makePlan(S){
   const zc=clamp(11.6-Math.log2(S/100),7.4,11.2),W=z=>K/2**z,wc=W(zc),w0=W(CAM.farm),ws=W(CAM.shop);
-  const width=x=>Math.min(wc,w0+CAM.slope*x,ws+CAM.slope*(S-x));
+  /* 上昇から水平へ移るところで角が立たないよう、なめらかに最小をとる */
+  const width=x=>{const q=4,c=w0+CAM.slope*x,d=ws+CAM.slope*Math.max(0,S-x);return (wc**-q+c**-q+d**-q)**(-1/q);};
   const N=1400,dist=[],time=[0];
   for(let i=0;i<=N;i++){const v=i/N;dist.push(S*(v<.5?.5*(2*v)**5:1-.5*(2*(1-v))**5));}
   for(let i=1;i<=N;i++)time.push(time[i-1]+(dist[i]-dist[i-1])*(1/width(dist[i])+1/width(dist[i-1]))/2);
@@ -580,7 +582,7 @@ function mapSync(){
 }
 function initMap(){
   mapboxgl.accessToken=TOKEN;
-  map=new mapboxgl.Map({container:'map',style:'mapbox://styles/mapbox/light-v11',center:HOME,zoom:4,projection:'globe',pixelRatio:Math.min(devicePixelRatio||1,2)});
+  map=new mapboxgl.Map({container:'map',style:'mapbox://styles/mapbox/light-v11',center:HOME,zoom:4,projection:'mercator',pixelRatio:Math.min(devicePixelRatio||1,2)});
   map.jumpTo({zoom:homeZoom()});
   map.on('error',e=>{const st=e.error&&e.error.status;if((st===401||st===403)&&e.sourceId!=='sat')showMapMsg('地図を読み込めません。MapboxのトークンのURL制限に、このページのアドレスを追加してください。');});
   map.on('click',e=>{
@@ -610,23 +612,33 @@ function initMap(){
     map.addLayer({id:'shops',type:'circle',source:'shops',paint:{'circle-color':COL.ink,'circle-stroke-color':COL.paper,'circle-stroke-width':2,'circle-radius':6}});
     map.addLayer({id:'shop-name',type:'symbol',source:'shops',minzoom:7,layout:{'text-field':['get','name'],'text-size':13,'text-offset':[0,1],'text-anchor':'top'},paint:{'text-color':COL.ink,'text-halo-color':COL.paper,'text-halo-width':1.8}});
     const el=document.createElement('div');el.className='seed';
-    el.innerHTML='<svg viewBox="0 0 24 24" width="24" height="24"><path d="M12 2.5 21 20H3Z" fill="#3A2A20" stroke="#FBFCFA" stroke-width="1.6" stroke-linejoin="round"/><path d="M12 5.5V19" stroke="#FBFCFA" stroke-width="1" fill="none"/></svg>';
+    el.innerHTML=SEED_SVG;$('seedFix').innerHTML=SEED_SVG;
     marker=new mapboxgl.Marker({element:el,rotationAlignment:'viewport',pitchAlignment:'viewport'});
     ready=true;$('mapMsg').hidden=true;mapSync();
     if(state.visit){const v=visitOf(state.visit);if(v&&ends(v))fly(v);}
   });
   addEventListener('resize',()=>map.resize());
 }
+const SEED_SVG='<svg viewBox="0 0 100 100" width="28" height="28"><path d="M50 10C60 28 81 55 83 70C84 83 72 89 50 89C28 89 16 83 17 70C19 55 40 28 50 10Z" fill="#33241B" stroke="#FBFCFA" stroke-width="6" stroke-linejoin="round"/><path d="M50 10C60 28 81 55 83 70C84 83 72 89 50 89C48 89 46 89 44 89C43 62 46 34 50 10Z" fill="#6B5240"/></svg>';
 const trim=v=>{map.setPaintProperty('hl','line-trim-offset',v);map.setPaintProperty('hl-case','line-trim-offset',v);};
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 function idle(ms){return new Promise(res=>{const on=()=>{clearTimeout(t);res();};map.once('idle',on);const t=setTimeout(()=>{map.off('idle',on);res();},ms);});}
 function frames(dur,fn,my){return new Promise(res=>{const t0=performance.now();(function tick(now){if(my!==run)return res();const p=clamp((now-t0)/dur,0,1);fn(p);p<1?requestAnimationFrame(tick):res();})(t0);});}
 function setFlying(on,now){document.body.classList.toggle('flying',on);document.body.classList.toggle('flyingNow',!!now);if(map)map.resize();}
 function goHome(){
-  run++;$('float').hidden=true;setFlying(false,false);
+  run++;$('float').hidden=true;$('seedFix').hidden=true;setFlying(false,false);
   if(!ready)return;
   marker.remove();map.getSource('hl').setData(fc([]));satOn(false);
   map.flyTo({center:HOME,zoom:homeZoom(),pitch:0,bearing:0,duration:calm?0:1400,essential:!calm});
+}
+/* カメラの高さを自分で決める。地形が変わってもカメラは上下しない */
+const FOV=.6435011087932844;
+const camD=zoom=>.5*map.getContainer().clientHeight/Math.tan(FOV/2)/(512*2**zoom);
+function setFree(pos,zoom,pitch,bearing,g){
+  const cam=map.getFreeCameraOptions(),mc=mapboxgl.MercatorCoordinate.fromLngLat(pos,0),unit=mc.meterInMercatorCoordinateUnits(),d=camD(zoom),b=bearing*R,q=pitch*R;
+  cam.position=new mapboxgl.MercatorCoordinate(mc.x-Math.sin(b)*d*Math.sin(q),mc.y+Math.cos(b)*d*Math.sin(q),g*unit+d*Math.cos(q));
+  cam.setPitchBearing(pitch,bearing);
+  map.setFreeCameraOptions(cam);
 }
 /* 列島→産地→山を越えて→店。カメラの数値は試作で決めたもの */
 async function fly(v){
@@ -653,13 +665,23 @@ async function fly(v){
   if(my!==run)return;
   await sleep(CAM.hold);await idle(1800);if(my!==run)return;
   map.getSource('hl').setData(line);trim([.00001,1]);
+  /* 飛び始めの基準の高さは今のカメラから取り、店に近づくにつれて店の地面の高さへゆっくり移す */
+  const u0=mapboxgl.MercatorCoordinate.fromLngLat(op,0).meterInMercatorCoordinateUnits();
+  let gNow=(map.getFreeCameraOptions().position.z-camD(CAM.farm)*Math.cos(CAM.pitchEnd*R))/u0;
+  let gKnown=null;
+  marker.remove();$('seedFix').hidden=false;
   await frames(plan.duration,p=>{
-    const {x,zoom}=plan.at(flightTime(p)),pos=r.pos(x),lv=1-smooth(plan.zc,plan.zc+2.2,zoom);
-    trim([trimAt(x),1]);marker.setLngLat(pos);
-    map.jumpTo({center:pos,zoom,pitch:CAM.pitchEnd+(CAM.pitchCruise-CAM.pitchEnd)*lv,bearing:r.heading(x)});
+    const {x,zoom}=plan.at(flightTime(p)),pos=r.pos(x),lv=1-smooth(plan.zc,plan.zc+2.2,zoom),t=x/r.S;
+    trim([trimAt(x),1]);
+    if(t>.4){
+      const e=map.queryTerrainElevation(sp);if(e!==null&&e!==undefined)gKnown=e;const goal=gKnown===null?(t>.6?30:gNow):gKnown;
+      gNow+=(goal-gNow)*(.015*smooth(.4,.6,t)+.2*smooth(.88,1,t));
+    }
+    setFree(pos,zoom,CAM.pitchEnd+(CAM.pitchCruise-CAM.pitchEnd)*lv,r.heading(x),gNow);
   },my);
+  $('seedFix').hidden=true;
   if(my!==run)return;
-  trim([0,0]);marker.setLngLat(sp);finish();
+  trim([0,0]);marker.setLngLat(sp).addTo(map);finish();
 }
 $('float').onclick=()=>{goHome();};
 
@@ -667,7 +689,7 @@ $('float').onclick=()=>{goHome();};
 function pick({title,center,zoom,geo}){
   return new Promise(res=>{
     if(!ready)return res(undefined);
-    run++;marker.remove();map.getSource('hl').setData(fc([]));satOn(false);
+    run++;$('seedFix').hidden=true;marker.remove();map.getSource('hl').setData(fc([]));satOn(false);
     state.picking=true;$('float').hidden=true;
     $('layer1').hidden=$('layer2').hidden=true;
     document.body.classList.add('picking');document.body.classList.remove('flying','flyingNow');map.resize();
