@@ -1,0 +1,197 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>そば 山越えの試作</title>
+<style>
+:root{--paper:#F2F4F1;--sheet:#FBFCFA;--ink:#17212E;--muted:#55606D;--line:#C9D1D6;--ai:#1F3F6E;--on-ai:#F7F9F8}
+html,body{height:100%;margin:0}
+body{display:flex;flex-direction:column;background:var(--paper);color:var(--ink);font-family:"Hiragino Sans","Yu Gothic",sans-serif;font-size:15px}
+#map{flex:1;min-height:0;position:relative}
+#cap{position:absolute;left:12px;right:12px;top:max(12px,env(safe-area-inset-top));z-index:2;background:var(--sheet);border:1px solid var(--line);border-radius:3px;padding:7px 10px;font-size:14px;font-weight:700;line-height:1.4}
+#cap small{display:block;font-weight:400;font-size:12.5px;color:var(--muted)}
+#panel{padding:10px max(16px,env(safe-area-inset-right)) max(12px,env(safe-area-inset-bottom)) max(16px,env(safe-area-inset-left));display:grid;gap:8px}
+.t{margin:0;font-size:12.5px;font-weight:700;color:var(--muted)}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+button{font:inherit;cursor:pointer}
+.chip{min-height:40px;padding:0 10px;border:1px solid var(--line);border-radius:3px;background:var(--sheet);color:var(--ink);font-size:14px}
+.chip[aria-pressed="true"]{background:var(--ai);border-color:var(--ai);color:var(--on-ai);font-weight:700}
+#go{min-height:48px;border:0;border-radius:3px;background:var(--ai);color:var(--on-ai);font-size:16px;font-weight:700}
+#go:disabled{opacity:.5}
+#err{margin:0;font-size:13.5px;font-weight:700;color:#7A3E12}
+.seed{filter:drop-shadow(0 1px 2px rgba(0,0,0,.5))}
+</style>
+</head>
+<body>
+<div id="map"><div id="cap"></div></div>
+<div id="panel">
+  <p class="t">産地（試作 版1。お店は見本です）</p>
+  <div class="chips" id="org"></div>
+  <p class="t">飛んでいる間の見え方</p>
+  <div class="chips" id="look"></div>
+  <p id="err" hidden></p>
+  <button id="go" type="button" disabled>地図を読み込んでいます</button>
+</div>
+
+<script>
+const TOKEN='pk.eyJ1IjoiaG9yaWhha28iLCJhIjoiY211djd0ejljMDA5ZjMycHYxaTY3M3BsdSJ9.a1yefJYynC4k_YvllM5DVw';
+const MB='https://api.mapbox.com/mapbox-gl-js/v3.9.0';
+const ORIGINS=[
+  {id:'hitachi',name:'茨城県 常陸太田市',sub:'常陸秋そば',p:[140.527,36.538]},
+  {id:'togakushi',name:'長野県 戸隠',sub:'信州のそば',p:[138.08,36.75]},
+  {id:'yamato',name:'福島県 山都',sub:'会津のそば',p:[139.72,37.63]},
+  {id:'horokanai',name:'北海道 幌加内町',sub:'北の大産地',p:[142.155,44.005]}
+];
+const SHOP={name:'見本の店',p:[139.77,35.695]};
+const HOME=[138.3,37.2];
+const CAM={start:4.7,farm:13.2,shop:15.8,slope:.25,pitchEnd:58,pitchCruise:74,approach:2800,hold:250,swing:.45,exag:1.6};
+const COL={land:'#E4E2D6',land2:'#DBD9CC',sea:'#2B4A63',road:'#F4F2EA',ink:'#17212E',shu:'#D2502F',paper:'#FBFCFA'};
+
+/* ---------- 計算（地図に触らない部分） ---------- */
+const R=Math.PI/180,K=25000;
+const clamp=(n,a,b)=>Math.max(a,Math.min(b,n));
+const smooth=(a,b,x)=>{const t=clamp((x-a)/(b-a),0,1);return t*t*(3-2*t);};
+function gcKm(a,b){const p1=a[1]*R,p2=b[1]*R,dp=p2-p1,dl=(b[0]-a[0])*R,h=Math.sin(dp/2)**2+Math.cos(p1)*Math.cos(p2)*Math.sin(dl/2)**2;return 2*6371*Math.asin(Math.sqrt(h));}
+function brg(a,b){const p1=a[1]*R,p2=b[1]*R,dl=(b[0]-a[0])*R;return Math.atan2(Math.sin(dl)*Math.cos(p2),Math.cos(p1)*Math.sin(p2)-Math.sin(p1)*Math.cos(p2)*Math.cos(dl))/R;}
+/* 産地から店へ、少しだけふくらませた線（距離が短いと直線では味気ないため） */
+function bowLine(a,b){
+  const S=gcKm(a,b),n=Math.max(60,Math.ceil(S/3)),h=brg(a,b)*R,pts=[];
+  for(let i=0;i<=n;i++){
+    const t=i/n,off=S*.05*Math.sin(Math.PI*t),lat=a[1]+(b[1]-a[1])*t;
+    pts.push([a[0]+(b[0]-a[0])*t+off*Math.cos(h)/(111*Math.cos(lat*R)),lat-off*Math.sin(h)/111]);
+  }
+  return pts;
+}
+function makeRoute(a,b){
+  const pts=bowLine(a,b),cum=[0];
+  for(let i=1;i<pts.length;i++)cum.push(cum[i-1]+gcKm(pts[i-1],pts[i]));
+  const S=cum[cum.length-1];
+  const idx=x=>{let lo=0,hi=pts.length-1;while(hi-lo>1){const m=(lo+hi)>>1;cum[m]<=x?lo=m:hi=m;}return lo;};
+  const pos=x=>{x=clamp(x,0,S);const i=idx(x),u=(x-cum[i])/Math.max(1e-9,cum[i+1]-cum[i]);return [pts[i][0]+(pts[i+1][0]-pts[i][0])*u,pts[i][1]+(pts[i+1][1]-pts[i][1])*u];};
+  const heading=x=>{const d=Math.max(2,S*.02);return brg(pos(x-d),pos(x+d));};
+  return {pts,S,pos,heading};
+}
+/* 画面に見える幅を、出発点・到着点からの距離に比例させる（豆ミルと同じ考え方）。山の間だけ低く保つ */
+function makePlan(S){
+  const zc=clamp(11.6-Math.log2(S/100),7.4,11.2),W=z=>K/2**z,wc=W(zc),w0=W(CAM.farm),ws=W(CAM.shop);
+  const width=x=>Math.min(wc,w0+CAM.slope*x,ws+CAM.slope*(S-x));
+  const N=1400,dist=[],time=[0];
+  for(let i=0;i<=N;i++){const v=i/N;dist.push(S*(v<.5?.5*(2*v)**5:1-.5*(2*(1-v))**5));}
+  for(let i=1;i<=N;i++)time.push(time[i-1]+(dist[i]-dist[i-1])*(1/width(dist[i])+1/width(dist[i-1]))/2);
+  const T=time[N];
+  return {S,zc,duration:clamp(7000+S*9,8000,15000),at(u){
+    const target=u*T;let lo=0,hi=N;
+    while(hi-lo>1){const m=(lo+hi)>>1;time[m]<=target?lo=m:hi=m;}
+    const x=dist[lo]+(dist[hi]-dist[lo])*((target-time[lo])/Math.max(1e-9,time[hi]-time[lo]));
+    return {x,zoom:Math.log2(K/width(x))};
+  }};
+}
+const endSoft=(t,e)=>t<1-e?t/(1-e/2):1-(1-t)**2/(e*(2-e));
+const easeIn=t=>endSoft(t,.05)**2.4;
+const bothEnds=(t,e)=>t<e?t*t/(2*e*(1-e)):t<1-e?(t-e/2)/(1-e):1-(1-t)**2/(2*e*(1-e));
+/* 引きは速く始まって減速し、店への寄りはゆっくり始まって加速する */
+const flightTime=t=>{const s=bothEnds(t,.04);return clamp(s+CAM.swing*Math.sin(2*Math.PI*s)/(2*Math.PI),0,1);};
+
+/* ---------- 地図 ---------- */
+const $=id=>document.getElementById(id);
+const calm=matchMedia('(prefers-reduced-motion:reduce)').matches;
+const state={org:'hitachi',look:'sumi'};
+let map,marker,run=0,ready=false;
+const fc=f=>({type:'FeatureCollection',features:f});
+function chips(el,items,get,set){
+  el.innerHTML=items.map(([k,t])=>`<button class="chip" type="button" data-k="${k}" aria-pressed="${get()===k}">${t}</button>`).join('');
+  el.querySelectorAll('button').forEach(b=>b.onclick=()=>{set(b.dataset.k);drawUI();});
+}
+function caption(){
+  const o=ORIGINS.find(x=>x.id===state.org);
+  $('cap').innerHTML=`${o.name} → ${SHOP.name}<small>${o.sub}、およそ${Math.round(gcKm(o.p,SHOP.p))}km</small>`;
+}
+function drawUI(){
+  chips($('org'),ORIGINS.map(o=>[o.id,o.name.split(' ')[1]]),()=>state.org,v=>{state.org=v;});
+  chips($('look'),[['sumi','墨絵'],['photo','衛星写真']],()=>state.look,v=>{state.look=v;});
+  caption();
+}
+function showErr(t){$('err').hidden=false;$('err').textContent=t;}
+function tint(){
+  for(const l of map.getStyle().layers){
+    const id=l.id,set=(p,v)=>{try{map.setPaintProperty(id,p,v);}catch(e){}};
+    if(l.type==='background')set('background-color',COL.land);
+    else if(l.type==='fill'){if(/water/.test(id))set('fill-color',COL.sea);else if(/hillshade/.test(id))set('fill-opacity',0);else set('fill-color',COL.land2);}
+    else if(l.type==='line'){if(/water/.test(id))set('line-color',COL.sea);else if(!/admin/.test(id))set('line-color',COL.road);}
+    else if(l.type==='symbol'){
+      try{const tf=map.getLayoutProperty(id,'text-field');if(JSON.stringify(tf||'').includes('name'))map.setLayoutProperty(id,'text-field',['coalesce',['get','name_ja'],['get','name']]);}catch(e){}
+    }
+  }
+}
+function initMap(){
+  mapboxgl.accessToken=TOKEN;
+  map=new mapboxgl.Map({container:'map',style:'mapbox://styles/mapbox/light-v11',center:HOME,zoom:CAM.start,projection:'globe',interactive:false,attributionControl:true,pixelRatio:Math.min(devicePixelRatio||1,2)});
+  map.on('error',e=>{if(!ready)showErr('地図を読み込めませんでした。通信できる場所で開き直してください。');console.warn(e&&e.error);});
+  map.on('load',()=>{
+    tint();
+    const first=(map.getStyle().layers.find(l=>l.type==='symbol')||{}).id;
+    map.addSource('dem',{type:'raster-dem',url:'mapbox://mapbox.mapbox-terrain-dem-v1',tileSize:512,maxzoom:14});
+    map.addSource('dem2',{type:'raster-dem',url:'mapbox://mapbox.mapbox-terrain-dem-v1',tileSize:512,maxzoom:14});
+    map.setTerrain({source:'dem',exaggeration:CAM.exag});
+    map.setFog({color:'#E7E9E4','high-color':'#B9C5CF','horizon-blend':.08,'space-color':'#1B2636','star-intensity':0});
+    map.addLayer({id:'sumi',type:'hillshade',source:'dem2',paint:{'hillshade-shadow-color':'#2A3440','hillshade-highlight-color':'#F4F4EE','hillshade-accent-color':'#55606D','hillshade-exaggeration':.75}},first);
+    map.addSource('sat',{type:'raster',url:'mapbox://mapbox.satellite',tileSize:256});
+    map.addLayer({id:'sat',type:'raster',source:'sat',minzoom:4,paint:{'raster-opacity':0,'raster-fade-duration':0}},first);
+    map.addSource('hl',{type:'geojson',lineMetrics:true,data:fc([])});
+    map.addLayer({id:'hl-case',type:'line',source:'hl',layout:{'line-cap':'round','line-join':'round'},paint:{'line-color':COL.paper,'line-width':6,'line-opacity':.9}});
+    map.addLayer({id:'hl',type:'line',source:'hl',layout:{'line-cap':'round','line-join':'round'},paint:{'line-color':COL.shu,'line-width':3.2}});
+    const el=document.createElement('div');el.className='seed';
+    /* そばの実は三角の粒 */
+    el.innerHTML='<svg viewBox="0 0 24 24" width="24" height="24"><path d="M12 2.5 21 20H3Z" fill="#3A2A20" stroke="#FBFCFA" stroke-width="1.6" stroke-linejoin="round"/><path d="M12 5.5V19" stroke="#FBFCFA" stroke-width="1" fill="none"/></svg>';
+    marker=new mapboxgl.Marker({element:el,rotationAlignment:'viewport',pitchAlignment:'viewport'});
+    ready=true;$('go').disabled=false;$('go').textContent='産地から店へ飛ぶ';
+  });
+}
+const trim=v=>{map.setPaintProperty('hl','line-trim-offset',v);map.setPaintProperty('hl-case','line-trim-offset',v);};
+const sat=o=>map.setPaintProperty('sat','raster-opacity',o);
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+function idle(ms){return new Promise(res=>{const on=()=>{clearTimeout(t);res();};map.once('idle',on);const t=setTimeout(()=>{map.off('idle',on);res();},ms);});}
+function frames(dur,fn,my){return new Promise(res=>{const t0=performance.now();(function tick(now){if(my!==run)return res();const p=clamp((now-t0)/dur,0,1);fn(p);p<1?requestAnimationFrame(tick):res();})(t0);});}
+
+async function fly(){
+  if(!ready)return;
+  const my=++run,o=ORIGINS.find(x=>x.id===state.org),r=makeRoute(o.p,SHOP.p),plan=makePlan(r.S),c=r.pts,last=c.length-1;
+  const startB=r.heading(0),endB=r.heading(r.S),photo=state.look==='photo';
+  const cm=[0],mercY=la=>Math.log(Math.tan(Math.PI/4+la*R/2))/(2*Math.PI);
+  for(let i=1;i<=last;i++)cm.push(cm[i-1]+Math.hypot((c[i][0]-c[i-1][0])/360,mercY(c[i][1])-mercY(c[i-1][1])));
+  const trimAt=x=>{const f=clamp(x/r.S,0,1)*last,i=Math.min(last-1,Math.floor(f)),u=f-i;return clamp((cm[i]+(cm[i+1]-cm[i])*u)/cm[last],.00001,.99999);};
+  $('go').disabled=true;$('go').textContent='飛んでいます';
+  map.getSource('hl').setData(fc([]));
+  marker.setLngLat(o.p).addTo(map);
+  if(calm){map.getSource('hl').setData(fc([{type:'Feature',geometry:{type:'LineString',coordinates:c},properties:{}}]));trim([0,0]);marker.setLngLat(SHOP.p);map.jumpTo({center:SHOP.p,zoom:CAM.shop,pitch:0,bearing:0});$('go').disabled=false;$('go').textContent='もう一度飛ぶ';return;}
+  /* 列島から産地へ。ゆっくり→だんだん速く */
+  map.jumpTo({center:HOME,zoom:CAM.start,pitch:0,bearing:0});sat(0);
+  try{map.easeTo({center:o.p,zoom:CAM.farm,pitch:CAM.pitchEnd,bearing:startB,duration:1,preloadOnly:true});map.easeTo({center:SHOP.p,zoom:CAM.shop,pitch:CAM.pitchEnd,bearing:endB,duration:1,preloadOnly:true});}catch(e){}
+  await frames(CAM.approach,p=>{
+    const zoom=CAM.start+(CAM.farm-CAM.start)*easeIn(p),m=smooth(0,.62,p),k=smooth(CAM.start+3,CAM.farm-1,zoom);
+    map.jumpTo({center:[HOME[0]+(o.p[0]-HOME[0])*m,HOME[1]+(o.p[1]-HOME[1])*m],zoom,pitch:CAM.pitchEnd*k,bearing:startB*smooth(.1,.98,p)});
+    sat(smooth(8,11.5,zoom));
+  },my);
+  if(my!==run)return;
+  await sleep(CAM.hold);await idle(700);if(my!==run)return;
+  /* 線は先に丸ごと渡し、見える長さだけを毎コマ変える */
+  map.getSource('hl').setData(fc([{type:'Feature',geometry:{type:'LineString',coordinates:c},properties:{}}]));trim([.00001,1]);
+  await frames(plan.duration,p=>{
+    const {x,zoom}=plan.at(flightTime(p)),pos=r.pos(x),low=1-smooth(plan.zc,plan.zc+2.2,zoom);
+    trim([trimAt(x),1]);marker.setLngLat(pos);
+    map.jumpTo({center:pos,zoom,pitch:CAM.pitchEnd+(CAM.pitchCruise-CAM.pitchEnd)*low,bearing:r.heading(x)});
+    const first=x<r.S/2;
+    sat(photo?(first?1:1-smooth(CAM.shop-3.2,CAM.shop-1.4,zoom)):(first?smooth(plan.zc+.6,plan.zc+2.4,zoom):0));
+  },my);
+  if(my!==run)return;
+  trim([0,0]);marker.setLngLat(SHOP.p);sat(0);
+  $('go').disabled=false;$('go').textContent='もう一度飛ぶ';
+}
+$('go').onclick=fly;
+drawUI();
+const css=document.createElement('link');css.rel='stylesheet';css.href=MB+'/mapbox-gl.css';document.head.append(css);
+const sc=document.createElement('script');sc.src=MB+'/mapbox-gl.js';sc.onload=initMap;sc.onerror=()=>showErr('地図の部品を読み込めませんでした。通信できる場所で開き直してください。');document.head.append(sc);
+</script>
+</body>
+</html>
