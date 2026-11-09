@@ -131,12 +131,15 @@ summary{cursor:pointer;font-size:14px;color:var(--ai);min-height:36px;display:fl
 .dl dt{font-size:13px;color:var(--muted)}
 .dl dd{margin:0;font-size:14px;overflow-wrap:anywhere}
 .seed{filter:drop-shadow(0 1px 2px rgba(0,0,0,.5))}
+#mapCard{position:absolute;left:10px;right:10px;bottom:30px;z-index:2;background:var(--sheet);border:1px solid var(--line);border-radius:3px;padding:8px 10px;font-size:13.5px;line-height:1.45}
+#mapCard b{font-family:var(--head);font-size:16px;margin-right:6px}
+.front{display:grid;gap:8px;border:1.5px solid var(--ai);border-radius:3px;padding:12px;background:var(--sheet)}
 #seedFix{position:absolute;left:50%;top:50%;width:28px;height:28px;margin:-14px 0 0 -14px;z-index:1;pointer-events:none}
 @media (prefers-reduced-motion:reduce){.mark{transition:none}}
 </style>
 </head>
 <body>
-<div id="mapWrap"><div id="map"></div><div id="cross" hidden></div><div id="seedFix" class="seed" hidden></div><button id="float" type="button" hidden>全体に戻す</button><div id="mapMsg" hidden></div></div>
+<div id="mapWrap"><div id="map"></div><div id="cross" hidden></div><div id="seedFix" class="seed" hidden></div><div id="mapCard" hidden></div><button id="float" type="button" hidden>全体に戻す</button><div id="mapMsg" hidden></div></div>
 <div id="pickBar" hidden></div>
 <main id="pane">
   <nav class="tabs" id="tabs" aria-label="画面の切り替え"></nav>
@@ -146,7 +149,7 @@ summary{cursor:pointer;font-size:14px;color:var(--ai);min-height:36px;display:fl
 <div id="layer2"></div>
 
 <script>
-const VERSION='版7';
+const VERSION='版8';
 const TOKEN='pk.eyJ1IjoiaG9yaWhha28iLCJhIjoiY211djd0ejljMDA5ZjMycHYxaTY3M3BsdSJ9.a1yefJYynC4k_YvllM5DVw';
 const MB='https://api.mapbox.com/mapbox-gl-js/v3.9.0';
 const HOME=[138.3,37.2];
@@ -156,7 +159,28 @@ const ORIGIN_DICT=[
   {name:'常陸秋そば',place:'茨城県 常陸太田市',p:[140.527,36.538]},
   {name:'信州 戸隠',place:'長野県 長野市戸隠',p:[138.08,36.75]},
   {name:'会津 山都',place:'福島県 喜多方市山都',p:[139.72,37.63]},
-  {name:'北海道 幌加内',place:'北海道 幌加内町',p:[142.155,44.005]}
+  {name:'北海道 幌加内',place:'北海道 幌加内町',p:[142.155,44.005]},
+  {name:'山形 村山',place:'山形県 村山市',p:[140.38,38.48]},
+  {name:'新潟 魚沼',place:'新潟県 魚沼市',p:[138.96,37.23]},
+  {name:'福井 越前',place:'福井県 福井市',p:[136.22,36.06]},
+  {name:'島根 出雲',place:'島根県 出雲市',p:[132.75,35.37]},
+  {name:'徳島 祖谷',place:'徳島県 三好市祖谷',p:[133.84,33.88]}
+];
+const ORIGIN_FIRST=4;
+const KYODO=[
+  {name:'津軽そば',place:'青森',note:'大豆の呉をつなぎにする、やわらかいそば',p:[140.47,40.6]},
+  {name:'わんこそば',place:'岩手 盛岡、花巻',note:'一口分ずつ椀に次々と入れてもらう',p:[141.15,39.7]},
+  {name:'板そば',place:'山形 村山地方',note:'長い板に数人前を盛る',p:[140.38,38.48]},
+  {name:'ねぎそば',place:'福島 大内宿',note:'長ねぎを箸代わりにして、かじって薬味にする',p:[139.86,37.33]},
+  {name:'へぎそば',place:'新潟 魚沼地方',note:'布海苔をつなぎに使い、へぎという器に盛る',p:[138.96,37.23]},
+  {name:'富倉そば',place:'長野 飯山市',note:'オヤマボクチをつなぎに使う',p:[138.3,36.97]},
+  {name:'戸隠そば',place:'長野 戸隠',note:'一口大に束ねた「ぼっち盛り」',p:[138.08,36.75]},
+  {name:'すんきそば',place:'長野 木曽地方',note:'漬物のすんきをかけそばにのせる',p:[137.69,35.84]},
+  {name:'おろしそば',place:'福井 嶺北地方',note:'大根おろし、削り節、ねぎをのせる',p:[136.22,36.06]},
+  {name:'茶そば',place:'京都 宇治',note:'宇治抹茶を練り込んで打つ',p:[135.8,34.88]},
+  {name:'出雲そば',place:'島根 出雲地方',note:'殻ごと挽いた黒いそばを割子に盛る',p:[132.75,35.37]},
+  {name:'瓦そば',place:'山口 下関',note:'熱した瓦に茶そばをのせて焼く',p:[130.94,33.95]},
+  {name:'祖谷そば',place:'徳島 祖谷',note:'つなぎなしで太く短く、香りが強い',p:[133.84,33.88]}
 ];
 const DISHES=['もり','ざる','かけ','天ぷら','鴨','その他'];
 const AXIS={
@@ -169,7 +193,7 @@ const AXIS={
 };
 const AGAIN=['今回かぎり','機会があれば','また来たい'];
 const WORDS=[
-  {t:'そばとつゆ',w:['甘みがある','ざらつきがある','細打ち','ほしが見える','鰹が立つ','かえしがまろやか','そば湯が濃い']},
+  {t:'そばとつゆ',w:['新そば','甘みがある','ざらつきがある','細打ち','ほしが見える','鰹が立つ','かえしがまろやか','そば湯が濃い']},
   {t:'混み具合',w:['すぐ入れた','少し待った','かなり並んだ']},
   {t:'店の人',w:['店主ひとり','夫婦','家族','複数の職人']},
   {t:'客層',w:['ひとり客','常連','年配','家族連れ','観光客']}
@@ -232,16 +256,39 @@ function miniSvg(k,list,only){
   const a=AXIS[k],dots=Object.values(cell).map(o=>`<circle class="${o.yes||only?'m-on':'m-off'}" cx="${px(o.v)}" cy="${py(o.v)}" r="${only?7:3.5+o.n*2.2}"/>`).join('');
   return `<div class="mini ${k}"><div class="ax up">${a.up}</div><svg viewBox="0 0 100 100" role="img" aria-label="${a.name}の記録の分布"><line class="mid" x1="50" y1="0" x2="50" y2="100"/><line class="mid" x1="0" y1="50" x2="100" y2="50"/>${dots}</svg><div class="ax low"><span>${a.low[0]}</span><span>${a.low[2]}</span></div></div>`;
 }
+/* 店頭画面：前回何を食べてどうだったか、値段の動き、店の情報をひと目で */
+function frontHtml(s,list){
+  const last=list[0],rows=[],web=n=>(s.web||[]).filter(w=>w.n===n);
+  if(last){
+    rows.push(['前回',md(last.date)+(last.dish?'　'+last.dish:'')]);
+    if(last.again!=null)rows.push(['次の気持ち',AGAIN[last.again]]);
+    if(last.soba)rows.push(['そば',say(last.soba,'soba')]);
+    if(last.tsuyu)rows.push(['つゆ',say(last.tsuyu,'tsuyu')]);
+    if(last.origin)rows.push(['産地',last.origin.name]);
+    const pr=list.filter(v=>v.price);
+    if(pr.length){let t=pr[0].price.toLocaleString()+'円';if(pr[1]&&pr[1].price!==pr[0].price)t+=`（その前より${pr[0].price>pr[1].price?'+':'−'}${Math.abs(pr[0].price-pr[1].price).toLocaleString()}円）`;rows.push(['値段',t]);}
+  }
+  const closed=web('定休日').concat(web('営業時間'));
+  const mine=s.mine||{},feel=[...(mine.look||[]),...(mine.size||[]),...(mine.seat||[])].join('、');
+  return `<section class="front" id="front"><h2>${esc(s.name)}</h2>
+    ${rows.length?`<dl class="dl">${rows.map(r=>`<dt>${r[0]}</dt><dd>${esc(r[1])}</dd>`).join('')}</dl>`:'<p class="note">まだ記録がありません。</p>'}
+    ${closed.length?`<dl class="dl">${closed.map(w=>`<dt>${esc(w.n)}</dt><dd>${esc(w.v)}${old(w.date)?'<span class="warn">確認から1年以上たっています</span>':''}</dd>`).join('')}</dl>`:''}
+    ${feel?`<p class="note">${esc(feel)}</p>`:''}
+    <p class="note">記録${list.length}件</p>
+    <button class="link" id="frontInfo" type="button">お店の情報を見る</button></section>`;
+}
 function drawRec(){
   const list=D.visits.filter(v=>!state.shop||v.shop===state.shop).sort(byDate);
   const shops=[...D.shops].sort((a,b)=>a.at-b.at);
   $('view').innerHTML=`
+    ${state.shop&&shopOf(state.shop)?frontHtml(shopOf(state.shop),list):''}
     ${shops.length?`<div class="chips" id="fil"><button class="chip" type="button" data-k="" aria-pressed="${!state.shop}">すべて</button>${shops.map(s=>`<button class="chip" type="button" data-k="${esc(s.id)}" aria-pressed="${state.shop===s.id}">${esc(s.name)}</button>`).join('')}</div>`:''}
     <button class="go" id="add" type="button">今日のそばを記録</button>
     ${list.length?`<div class="block"><h2>自分の好きな場所</h2><div class="minis">${miniSvg('soba',list)}${miniSvg('tsuyu',list)}</div><p class="note">塗りつぶしは「また来たい」、白抜きはそれ以外です。同じ場所に重なると大きくなります。</p></div>
     <div class="block"><h2>これまでの記録</h2><ul class="list">${list.map(v=>{const s=shopOf(v.shop);return `<li><button class="rec" type="button" data-id="${esc(v.id)}"><span class="d">${esc(md(v.date))}</span><span class="s">${esc(s?s.name:'')}${v.dish?'　'+esc(v.dish):''}</span><span class="r${v.again===2?' yes':''}">${v.again==null?'':AGAIN[v.again]}</span><span class="b">そば：${esc(say(v.soba,'soba'))}<br>つゆ：${esc(say(v.tsuyu,'tsuyu'))}${v.origin?'<br>産地：'+esc(v.origin.name):''}</span></button></li>`;}).join('')}</ul></div>`
     :'<p class="note">まだ記録がありません。お店で食べたら、最初の一枚を記録してみましょう。</p>'}`;
   $('add').onclick=()=>openForm({});
+  if($('frontInfo'))$('frontInfo').onclick=()=>{const id=state.shop;state.tab='mise';drawTabs();drawMise(id);$('pane').scrollTop=0;};
   $('view').querySelectorAll('#fil button').forEach(b=>b.onclick=()=>{state.shop=b.dataset.k||null;render();focusShop();});
   $('view').querySelectorAll('.rec').forEach(b=>b.onclick=()=>pickVisit(b.dataset.id));
 }
@@ -296,9 +343,12 @@ function openForm({edit}){
     $('fNew').onclick=()=>openShop(null,s=>{f.shop=s.id;shopsDraw();paint();});
   };
   const dishDraw=()=>{$('fDish').innerHTML=DISHES.map(d=>`<button type="button" class="chip" aria-pressed="${f.dish===d}" data-d="${d}">${d}</button>`).join('');$('fDish').querySelectorAll('button').forEach(b=>b.onclick=()=>{f.dish=f.dish===b.dataset.d?'':b.dataset.d;dishDraw();});};
+  let orgMore=false;
   const orgDraw=()=>{
     const cur=f.origin&&f.origin.name,custom=f.origin&&!ORIGIN_DICT.some(o=>o.name===cur);
-    $('fOrg').innerHTML=`<button type="button" class="chip" aria-pressed="${!f.origin}" data-o="">わからない</button>`+ORIGIN_DICT.map(o=>`<button type="button" class="chip" aria-pressed="${cur===o.name}" data-o="${o.name}">${o.name}</button>`).join('')+(custom?`<button type="button" class="chip" aria-pressed="true" data-keep="1">${esc(cur)}</button>`:'')+'<button type="button" class="chip" id="fOrgPick">地図で指定</button>';
+    const wide=orgMore||ORIGIN_DICT.findIndex(o=>o.name===cur)>=ORIGIN_FIRST,shown=wide?ORIGIN_DICT:ORIGIN_DICT.slice(0,ORIGIN_FIRST);
+    $('fOrg').innerHTML=`<button type="button" class="chip" aria-pressed="${!f.origin}" data-o="">わからない</button>`+shown.map(o=>`<button type="button" class="chip" aria-pressed="${cur===o.name}" data-o="${o.name}">${o.name}</button>`).join('')+(custom?`<button type="button" class="chip" aria-pressed="true" data-keep="1">${esc(cur)}</button>`:'')+(wide?'':'<button type="button" class="chip" id="fOrgMore">ほかの産地</button>')+'<button type="button" class="chip" id="fOrgPick">地図で指定</button>';
+    if($('fOrgMore'))$('fOrgMore').onclick=()=>{orgMore=true;orgDraw();};
     $('fOrg').querySelectorAll('[data-o]').forEach(b=>b.onclick=()=>{const o=ORIGIN_DICT.find(x=>x.name===b.dataset.o);f.origin=o?{name:o.name,place:o.place,p:o.p}:null;orgDraw();});
     $('fOrgPick').onclick=async()=>{
       const p=await pick({title:'産地の場所を指定',center:(f.origin&&f.origin.p)||HOME,zoom:f.origin?10:5});
@@ -578,7 +628,7 @@ function mapSync(){
   D.visits.forEach(v=>{const e=ends(v);if(state.shop&&v.shop!==state.shop)return;if(e){pair[e[0].join()+'>'+v.shop]={e};}if(v.origin&&v.origin.p)org[v.origin.p.join()]=ptF(v.origin.p,{name:v.origin.name});});
   map.getSource('routes').setData(fc(Object.values(pair).map(o=>lineF(bowLine(o.e[0],o.e[1])))));
   map.getSource('origins').setData(fc(Object.values(org)));
-  map.getSource('shops').setData(fc(D.shops.filter(s=>s.p).map(s=>ptF(s.p,{k:s.id,name:s.name}))));
+  map.getSource('shops').setData(fc(D.shops.filter(s=>s.p).map(s=>ptF(s.p,{k:s.id,name:s.name,v:D.visits.some(v=>v.shop===s.id)}))));
 }
 function initMap(){
   mapboxgl.accessToken=TOKEN;
@@ -587,8 +637,11 @@ function initMap(){
   map.on('error',e=>{const st=e.error&&e.error.status;if((st===401||st===403)&&e.sourceId!=='sat')showMapMsg('地図を読み込めません。MapboxのトークンのURL制限に、このページのアドレスを追加してください。');});
   map.on('click',e=>{
     if(!ready||state.picking)return;
-    const r=16,hit=map.queryRenderedFeatures([[e.point.x-r,e.point.y-r],[e.point.x+r,e.point.y+r]],{layers:['shops']});
-    if(hit.length){state.visit=null;state.tab='rec';state.shop=hit[0].properties.k;render();focusShop();}
+    const r=16,box=[[e.point.x-r,e.point.y-r],[e.point.x+r,e.point.y+r]],hit=map.queryRenderedFeatures(box,{layers:['shops']});
+    $('mapCard').hidden=true;
+    if(hit.length){state.visit=null;state.tab='rec';state.shop=hit[0].properties.k;render();focusShop();return;}
+    const ky=map.queryRenderedFeatures(box,{layers:['kyodo']});
+    if(ky.length){const q=ky[0].properties;$('mapCard').innerHTML=`<b>${esc(q.name)}</b>${esc(q.place)}<br>${esc(q.note)}`;$('mapCard').hidden=false;}
   });
   map.on('load',()=>{
     tint();
@@ -605,11 +658,14 @@ function initMap(){
     map.addSource('hl',{type:'geojson',lineMetrics:true,data:fc([])});
     map.addLayer({id:'hl-case',type:'line',source:'hl',layout:{'line-cap':'round','line-join':'round'},paint:{'line-color':COL.paper,'line-width':6,'line-opacity':.9}});
     map.addLayer({id:'hl',type:'line',source:'hl',layout:{'line-cap':'round','line-join':'round'},paint:{'line-color':COL.shu,'line-width':3.2}});
+    map.addSource('kyodo',{type:'geojson',data:fc(KYODO.map(k=>ptF(k.p,{name:k.name,place:k.place,note:k.note})))});
+    map.addLayer({id:'kyodo',type:'circle',source:'kyodo',paint:{'circle-color':COL.paper,'circle-stroke-color':'#7A3E12','circle-stroke-width':1.6,'circle-radius':4.5}});
+    map.addLayer({id:'kyodo-name',type:'symbol',source:'kyodo',minzoom:5.2,layout:{'text-field':['get','name'],'text-size':11,'text-offset':[0,.9],'text-anchor':'top'},paint:{'text-color':'#7A3E12','text-halo-color':COL.paper,'text-halo-width':1.5}});
     map.addSource('origins',{type:'geojson',data:fc([])});
     map.addLayer({id:'origins',type:'circle',source:'origins',paint:{'circle-color':COL.shu,'circle-stroke-color':COL.paper,'circle-stroke-width':1.5,'circle-radius':5}});
     map.addLayer({id:'origin-name',type:'symbol',source:'origins',layout:{'text-field':['get','name'],'text-size':12,'text-offset':[0,.95],'text-anchor':'top'},paint:{'text-color':COL.ink,'text-halo-color':COL.paper,'text-halo-width':1.6}});
     map.addSource('shops',{type:'geojson',data:fc([])});
-    map.addLayer({id:'shops',type:'circle',source:'shops',paint:{'circle-color':COL.ink,'circle-stroke-color':COL.paper,'circle-stroke-width':2,'circle-radius':6}});
+    map.addLayer({id:'shops',type:'circle',source:'shops',paint:{'circle-color':['case',['==',['get','v'],true],COL.ink,COL.paper],'circle-stroke-color':['case',['==',['get','v'],true],COL.paper,COL.ink],'circle-stroke-width':2,'circle-radius':6}});
     map.addLayer({id:'shop-name',type:'symbol',source:'shops',minzoom:7,layout:{'text-field':['get','name'],'text-size':13,'text-offset':[0,1],'text-anchor':'top'},paint:{'text-color':COL.ink,'text-halo-color':COL.paper,'text-halo-width':1.8}});
     const el=document.createElement('div');el.className='seed';
     el.innerHTML=SEED_SVG;$('seedFix').innerHTML=SEED_SVG;
@@ -650,7 +706,7 @@ async function fly(v){
   for(let i=1;i<=last;i++)cm.push(cm[i-1]+Math.hypot((c[i][0]-c[i-1][0])/360,mercY(c[i][1])-mercY(c[i-1][1])));
   const trimAt=x=>{const f=clamp(x/r.S,0,1)*last,i=Math.min(last-1,Math.floor(f)),u=f-i;return clamp((cm[i]+(cm[i+1]-cm[i])*u)/cm[last],.00001,.99999);};
   const line=fc([lineF(c)]);
-  $('float').hidden=true;setFlying(true,true);
+  $('float').hidden=true;$('mapCard').hidden=true;setFlying(true,true);
   map.getSource('hl').setData(fc([]));
   marker.setLngLat(op).addTo(map);
   const finish=()=>{setFlying(true,false);$('float').hidden=false;};
